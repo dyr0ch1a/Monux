@@ -1,0 +1,9 @@
+[package]
+name = "tui"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+crossterm = "0.29.0"
+ratatui = "0.30.0"
+core = { path = "../core" }
