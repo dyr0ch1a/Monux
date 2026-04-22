@@ -1,28 +1,12 @@
+use core::storage::app_dir::AppDir;
+
 pub fn run() -> anyhow::Result<()> {
-    create_app_dir()?;
-    create_placeholders()?;
-    println!("Monux initialized");
-    Ok(())
-}
+    let app_dir = AppDir::new()?;
+    app_dir.init()?;
+    let config = app_dir.config_path();
 
-fn app_dir() -> anyhow::Result<std::path::PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("No home directory found"))?;
-
-    Ok(home.join(".monux"))
-}
-fn create_app_dir() -> anyhow::Result<()> {
-    let path = app_dir()?;
-
-    std::fs::create_dir_all(&path)?;
-
-    Ok(())
-}
-
-fn create_placeholders() -> anyhow::Result<()> {
-    let dir = app_dir()?;
-
-    std::fs::write(dir.join("config.toml"), "")?;
-    std::fs::write(dir.join("db.sqlite"), "")?;
-
+    if !config.exists() {
+        std::fs::write(config, r#"notes_dir = "~/notes""#)?;
+    }
     Ok(())
 }

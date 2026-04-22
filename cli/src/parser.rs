@@ -12,4 +12,5 @@ pub struct Cli {
 pub enum Commands {
     Init,
     Version,
+    New { name: Option<String> },
 }

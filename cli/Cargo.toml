@@ -9,3 +9,4 @@ anyhow = "1.0.102"
 clap = { version = "4", features = ["derive"]}
 core = { path = "../core" }
 dirs = "6.0.0"
+serde = "1.0.228"
