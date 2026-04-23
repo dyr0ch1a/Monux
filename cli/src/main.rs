@@ -2,7 +2,7 @@ mod commands;
 mod parser;
 
 use clap::Parser;
-use commands::{init, new, version};
+use commands::{find, init, list, new, version};
 use parser::{Cli, Commands};
 
 fn main() -> anyhow::Result<()> {
@@ -12,6 +12,8 @@ fn main() -> anyhow::Result<()> {
         Commands::Version => version::run(),
         Commands::Init => init::run()?,
         Commands::New { name } => new::run(name)?,
+        Commands::List => list::run()?,
+        Commands::Find { query } => find::run(query)?,
     }
 
     Ok(())

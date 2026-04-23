@@ -13,4 +13,6 @@ pub enum Commands {
     Init,
     Version,
     New { name: Option<String> },
+    List,
+    Find { query: String },
 }

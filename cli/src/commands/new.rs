@@ -1,10 +1,8 @@
-use core::storage::app_dir::AppDir;
-use core::storage::config::Config;
+use crate::commands::context::CommandContext;
 
 pub fn run(name: Option<String>) -> anyhow::Result<()> {
-    let app_dir = AppDir::new()?;
-    let config_path = AppDir::config_path(&app_dir);
-    let config = Config::load(config_path)?;
+    let ctx = CommandContext::new()?;
+    let config = ctx.load_config()?;
 
     std::fs::create_dir_all(&config.notes_dir)?;
 
