@@ -15,4 +15,5 @@ pub enum Commands {
     New { name: Option<String> },
     List,
     Find { query: String },
+    Delete { query: String },
 }

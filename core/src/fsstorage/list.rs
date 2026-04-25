@@ -39,4 +39,18 @@ impl Notes {
 
         Ok(result)
     }
+    pub fn delete(&self, query: String) -> anyhow::Result<()> {
+        let files = self.find(query)?;
+
+        if files.is_empty() {
+            println!("Nothing found");
+            return Ok(());
+        }
+
+        for file in files {
+            println!("Deleting: {}", file.display());
+            std::fs::remove_file(file)?;
+        }
+        Ok(())
+    }
 }

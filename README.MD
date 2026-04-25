@@ -7,5 +7,5 @@ CLI Crate:
 - [x] new 
 - [x] list
 - [x] find
-- [ ] delete
+- [x] delete
 - [ ] open (requimet editors of like ed)
