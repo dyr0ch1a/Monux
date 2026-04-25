@@ -21,4 +21,8 @@ impl AppDir {
     pub fn config_path(&self) -> PathBuf {
         self.root.join("config.toml")
     }
+
+    pub fn index_path(&self) -> PathBuf {
+        self.root.join("notes.redb")
+    }
 }

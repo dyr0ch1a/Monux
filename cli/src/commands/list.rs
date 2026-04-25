@@ -1,17 +1,12 @@
-use core::fsstorage::list;
-
 use crate::commands::context::CommandContext;
 
 pub fn run() -> anyhow::Result<()> {
     let ctx = CommandContext::new()?;
-    let config = ctx.load_config()?;
+    let index = ctx.open_note_index()?;
 
-    let notes = list::Notes::new(config.notes_dir);
-
-    let list = notes.list()?;
-
-    for note in list {
-        println!("{}", note.display());
+    let notes = index.list()?;
+    for note in notes {
+        println!("{}\t{}\t{}", note.id, note.slug, note.title);
     }
 
     Ok(())

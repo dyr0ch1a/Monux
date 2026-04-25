@@ -1,16 +1,12 @@
-use core::context::StorageContext;
-use core::fsstorage::list::Notes;
+use crate::commands::context::CommandContext;
 
 pub fn run(query: String) -> anyhow::Result<()> {
-    let ctx = StorageContext::new()?;
-    let config = ctx.load_config()?;
+    let ctx = CommandContext::new()?;
+    let index = ctx.open_note_index()?;
 
-    let notes = Notes::new(config.notes_dir);
-
-    let found = notes.find(query)?;
-
-    for path in found {
-        println!("{}", path.display());
+    let found = index.find(&query)?;
+    for note in found {
+        println!("{}\t{}\t{}", note.id, note.slug, note.title);
     }
 
     Ok(())

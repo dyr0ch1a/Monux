@@ -1,5 +1,6 @@
 use core::context::StorageContext;
 use core::fsstorage::config::Config;
+use core::index::NoteIndex;
 
 pub struct CommandContext {
     storage: StorageContext,
@@ -22,5 +23,9 @@ impl CommandContext {
 
     pub fn load_config(&self) -> anyhow::Result<Config> {
         self.storage.load_config()
+    }
+
+    pub fn open_note_index(&self) -> anyhow::Result<NoteIndex> {
+        self.storage.open_note_index()
     }
 }

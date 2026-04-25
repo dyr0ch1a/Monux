@@ -16,4 +16,5 @@ pub enum Commands {
     List,
     Find { query: String },
     Delete { query: String },
+    Edit { path: Option<String> },
 }
