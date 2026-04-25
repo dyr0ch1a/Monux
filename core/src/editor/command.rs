@@ -62,27 +62,61 @@ pub fn parse_command(input: &str) -> Result<Command, EditorError> {
     let arg = chars.as_str().trim();
 
     match cmd {
-        'p' => Ok(Command::Print {
-            range,
-            numbered: false,
-        }),
-        'n' => Ok(Command::Print {
-            range,
-            numbered: true,
-        }),
-        'd' => Ok(Command::Delete { range }),
-        'a' => Ok(Command::Append { at: range }),
-        'i' => Ok(Command::Insert { at: range }),
-        'c' => Ok(Command::Change { range }),
+        'p' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Print {
+                range,
+                numbered: false,
+            })
+        }
+        'n' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Print {
+                range,
+                numbered: true,
+            })
+        }
+        'd' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Delete { range })
+        }
+        'a' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Append { at: range })
+        }
+        'i' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Insert { at: range })
+        }
+        'c' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Change { range })
+        }
         'w' => Ok(Command::Write {
             path: parse_path(arg),
         }),
         'e' => Ok(Command::Edit {
             path: parse_path(arg),
         }),
-        'q' => Ok(Command::Quit { force: false }),
-        'Q' => Ok(Command::Quit { force: true }),
+        'q' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Quit { force: false })
+        }
+        'Q' => {
+            ensure_no_arg(cmd, arg)?;
+            Ok(Command::Quit { force: true })
+        }
         _ => Err(EditorError::InvalidCommand(body.to_string())),
+    }
+}
+
+fn ensure_no_arg(cmd: char, arg: &str) -> Result<(), EditorError> {
+    if arg.is_empty() {
+        Ok(())
+    } else {
+        Err(EditorError::InvalidCommand(format!(
+            "command '{cmd}' does not take arguments: {arg}"
+        )))
     }
 }
 
