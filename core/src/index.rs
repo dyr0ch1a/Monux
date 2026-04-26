@@ -49,10 +49,7 @@ impl NoteIndex {
             }
 
             let mut meta = write_txn.open_table(META)?;
-            let next_id = meta
-                .get("next_id")?
-                .map(|value| value.value())
-                .unwrap_or(1);
+            let next_id = meta.get("next_id")?.map(|value| value.value()).unwrap_or(1);
 
             let mut notes = write_txn.open_table(NOTES_BY_ID)?;
             let mut titles = write_txn.open_table(TITLES_BY_ID)?;
@@ -65,7 +62,9 @@ impl NoteIndex {
         write_txn.commit()?;
 
         Ok(NoteMeta {
-            id: self.id_by_slug(&slug)?.ok_or_else(|| anyhow::anyhow!("failed to fetch note id"))?,
+            id: self
+                .id_by_slug(&slug)?
+                .ok_or_else(|| anyhow::anyhow!("failed to fetch note id"))?,
             slug,
             title: title.to_string(),
         })
@@ -193,9 +192,7 @@ pub fn normalize_slug(raw: &str) -> String {
         .and_then(|value| value.to_str())
         .unwrap_or(raw);
 
-    let no_ext = last_component
-        .strip_suffix(".md")
-        .unwrap_or(last_component);
+    let no_ext = last_component.strip_suffix(".md").unwrap_or(last_component);
 
     slugify(no_ext)
 }

@@ -134,7 +134,9 @@ impl<S: Storage> Editor<S> {
                     lines: Vec::new(),
                 });
                 Ok(ExecOutcome {
-                    events: vec![Event::Message("enter input mode, finish with '.'".to_string())],
+                    events: vec![Event::Message(
+                        "enter input mode, finish with '.'".to_string(),
+                    )],
                     should_quit: false,
                 })
             }
@@ -146,7 +148,9 @@ impl<S: Storage> Editor<S> {
                     lines: Vec::new(),
                 });
                 Ok(ExecOutcome {
-                    events: vec![Event::Message("enter input mode, finish with '.'".to_string())],
+                    events: vec![Event::Message(
+                        "enter input mode, finish with '.'".to_string(),
+                    )],
                     should_quit: false,
                 })
             }
@@ -158,7 +162,9 @@ impl<S: Storage> Editor<S> {
                     lines: Vec::new(),
                 });
                 Ok(ExecOutcome {
-                    events: vec![Event::Message("enter input mode, finish with '.'".to_string())],
+                    events: vec![Event::Message(
+                        "enter input mode, finish with '.'".to_string(),
+                    )],
                     should_quit: false,
                 })
             }
@@ -326,8 +332,7 @@ impl<S: Storage> Editor<S> {
         }
 
         let replacement_len = new_lines.len();
-        self.lines
-            .splice((start - 1)..end, new_lines.drain(..));
+        self.lines.splice((start - 1)..end, new_lines.drain(..));
 
         if replacement_len == 0 {
             if start <= self.lines.len() {

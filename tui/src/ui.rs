@@ -1,36 +1,74 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::app::{App, FocusPane};
+use crate::app::{App, EditorMode, FocusPane};
 
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
-        .split(area);
+    let (panes_area, command_area) = if app.command_mode {
+        let vertical = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(3)])
+            .split(area);
+        (vertical[0], Some(vertical[1]))
+    } else {
+        (area, None)
+    };
 
-    let panes = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(20),
-            Constraint::Percentage(60),
-            Constraint::Percentage(20),
-        ])
-        .split(vertical[0]);
+    let (notes_area, preview_area, links_area) =
+        match (app.show_notes_panel(), app.show_links_panel()) {
+            (false, false) => (None, panes_area, None),
+            (true, false) => {
+                let chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+                    .split(panes_area);
+                (Some(chunks[0]), chunks[1], None)
+            }
+            (false, true) => {
+                let chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
+                    .split(panes_area);
+                (None, chunks[0], Some(chunks[1]))
+            }
+            (true, true) => {
+                let chunks = Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([
+                        Constraint::Percentage(20),
+                        Constraint::Percentage(60),
+                        Constraint::Percentage(20),
+                    ])
+                    .split(panes_area);
+                (Some(chunks[0]), chunks[1], Some(chunks[2]))
+            }
+        };
 
-    draw_notes(frame, app, panes[0]);
-    draw_preview(frame, app, panes[1]);
-    draw_links(frame, app, panes[2]);
-    draw_command(frame, app, vertical[1]);
+    if let Some(area) = notes_area {
+        draw_notes(frame, app, area);
+    }
+    draw_preview(frame, app, preview_area);
+    if let Some(area) = links_area {
+        draw_links(frame, app, area);
+    }
+    if let Some(area) = command_area {
+        draw_command(frame, app, area);
+    }
+
+    if let Some(area) = command_area {
+        place_command_cursor(frame, app, area);
+    } else if app.focus == FocusPane::Preview {
+        place_editor_cursor(frame, app, preview_area);
+    }
 }
 
-fn draw_links(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
     let links: Vec<ListItem> = if app.links.is_empty() {
         vec![ListItem::new("<no wiki-links>")]
     } else {
@@ -47,27 +85,88 @@ fn draw_links(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     let list = List::new(links)
         .block(panel_block("Links", app.focus == FocusPane::Links))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▶ ");
 
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_preview(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
+    let mode = match app.editor_mode() {
+        EditorMode::Normal => "NORMAL",
+        EditorMode::Insert => "INSERT",
+        EditorMode::Visual => "VISUAL",
+    };
+    let dirty = if app.is_dirty() { " [+]" } else { "" };
     let title = match &app.current_note_slug {
-        Some(slug) => format!("Preview: {slug}"),
-        None => "Preview".to_string(),
+        Some(slug) => format!("Edit: {slug} [{mode}{dirty}] {}", app.status),
+        None => format!("Edit [{mode}{dirty}] {}", app.status),
     };
 
-    let paragraph = Paragraph::new(render_markdown(app.preview_source_lines()))
+    let inner_height = area.height.saturating_sub(2) as usize;
+    app.ensure_cursor_visible(inner_height);
+
+    let scroll = app.editor_scroll as usize;
+    let source = app.preview_source_lines();
+    let mut rendered = Vec::new();
+
+    if source.is_empty() {
+        rendered.push(Line::styled(
+            "<empty file>",
+            Style::default().fg(Color::DarkGray),
+        ));
+    } else {
+        for (idx, line) in source.iter().enumerate().skip(scroll).take(inner_height) {
+            let gutter = format!("{:>4} ", idx + 1);
+            let mut spans = vec![Span::styled(gutter, Style::default().fg(Color::DarkGray))];
+            let base_style = if idx == app.cursor_row() {
+                Style::default().bg(Color::Rgb(30, 30, 30))
+            } else {
+                Style::default()
+            };
+
+            if let Some((sel_start, sel_end)) =
+                app.visual_selection_for_row(idx, line.chars().count())
+            {
+                let before = slice_chars(line, 0, sel_start);
+                let selected = slice_chars(line, sel_start, sel_end);
+                let after = slice_chars(line, sel_end, line.chars().count());
+
+                if !before.is_empty() {
+                    spans.push(Span::styled(before, base_style));
+                }
+                if !selected.is_empty() {
+                    spans.push(Span::styled(
+                        selected,
+                        base_style.fg(Color::Black).bg(Color::LightYellow),
+                    ));
+                }
+                if !after.is_empty() {
+                    spans.push(Span::styled(after, base_style));
+                }
+                if spans.len() == 1 {
+                    spans.push(Span::styled(String::new(), base_style));
+                }
+            } else {
+                spans.push(Span::styled(line.clone(), base_style));
+            }
+
+            rendered.push(Line::from(spans));
+        }
+    }
+
+    let paragraph = Paragraph::new(Text::from(rendered))
         .block(panel_block(&title, app.focus == FocusPane::Preview))
-        .wrap(Wrap { trim: false })
-        .scroll((app.editor_scroll, 0));
+        .wrap(Wrap { trim: false });
 
     frame.render_widget(paragraph, area);
 }
 
-fn draw_notes(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_notes(frame: &mut Frame, app: &App, area: Rect) {
     let labels = app.notes_tree_labels();
     let items: Vec<ListItem> = if labels.is_empty() {
         vec![ListItem::new("<no notes>")]
@@ -82,30 +181,60 @@ fn draw_notes(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     let list = List::new(items)
         .block(panel_block("Notes Tree", app.focus == FocusPane::Notes))
-        .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▶ ");
 
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_command(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let prompt = if app.is_editor_input_mode() {
-        ">"
-    } else {
-        ":"
-    };
-
-    let content = if app.command_mode {
-        format!("{prompt} {}", app.command_input)
-    } else {
-        app.status.clone()
-    };
+fn draw_command(frame: &mut Frame, app: &App, area: Rect) {
+    let content = format!(":{}", app.command_input);
 
     let paragraph = Paragraph::new(content)
         .block(Block::default().borders(Borders::ALL).title("Command"))
         .wrap(Wrap { trim: true });
 
     frame.render_widget(paragraph, area);
+}
+
+fn place_command_cursor(frame: &mut Frame, app: &App, area: Rect) {
+    let input_width = app.command_input.chars().count() as u16;
+    let max_x = area.x + area.width.saturating_sub(2);
+    let x = (area.x + 2 + input_width).min(max_x);
+    let y = area.y + 1;
+    frame.set_cursor_position((x, y));
+}
+
+fn place_editor_cursor(frame: &mut Frame, app: &App, area: Rect) {
+    let inner_width = area.width.saturating_sub(2);
+    let inner_height = area.height.saturating_sub(2);
+    if inner_width == 0 || inner_height == 0 {
+        return;
+    }
+
+    let scroll = app.editor_scroll as usize;
+    let row = app.cursor_row();
+    if row < scroll {
+        return;
+    }
+
+    let visual_row = (row - scroll) as u16;
+    if visual_row >= inner_height {
+        return;
+    }
+
+    let gutter_width: u16 = 5;
+    let col = app.cursor_col() as u16;
+    let max_col = inner_width.saturating_sub(1).saturating_sub(gutter_width);
+    let visual_col = col.min(max_col);
+
+    let x = area.x + 1 + gutter_width + visual_col;
+    let y = area.y + 1 + visual_row;
+    frame.set_cursor_position((x, y));
 }
 
 fn panel_block<'a>(title: &'a str, focused: bool) -> Block<'a> {
@@ -115,128 +244,15 @@ fn panel_block<'a>(title: &'a str, focused: bool) -> Block<'a> {
         Style::default()
     };
 
-    Block::default().borders(Borders::ALL).title(title).style(style)
+    Block::default()
+        .borders(Borders::ALL)
+        .title(title)
+        .style(style)
 }
 
-fn render_markdown(lines: &[String]) -> Text<'static> {
-    if lines.is_empty() {
-        return Text::from(Line::styled(
-            "<empty file>",
-            Style::default().fg(Color::DarkGray),
-        ));
-    }
-
-    let mut rendered = Vec::with_capacity(lines.len());
-    let mut in_code_block = false;
-
-    for line in lines {
-        let trimmed = line.trim_start();
-
-        if trimmed.starts_with("```") {
-            in_code_block = !in_code_block;
-            rendered.push(Line::styled(
-                "──────── code ────────",
-                Style::default().fg(Color::DarkGray),
-            ));
-            continue;
-        }
-
-        if in_code_block {
-            rendered.push(Line::styled(
-                format!("  {line}"),
-                Style::default().fg(Color::Green),
-            ));
-            continue;
-        }
-
-        if let Some(rest) = heading(trimmed) {
-            rendered.push(Line::styled(
-                rest.to_string(),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-            ));
-            continue;
-        }
-
-        if let Some(rest) = list_item(trimmed) {
-            let mut spans = vec![Span::styled(
-                "• ",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            )];
-            spans.extend(parse_inline_code(rest));
-            rendered.push(Line::from(spans));
-            continue;
-        }
-
-        if let Some(rest) = quote_line(trimmed) {
-            let mut spans = vec![Span::styled("│ ", Style::default().fg(Color::Blue))];
-            spans.extend(parse_inline_code(rest));
-            rendered.push(Line::from(spans));
-            continue;
-        }
-
-        rendered.push(Line::from(parse_inline_code(line)));
-    }
-
-    Text::from(rendered)
-}
-
-fn heading(line: &str) -> Option<&str> {
-    for prefix in ["###### ", "##### ", "#### ", "### ", "## ", "# "] {
-        if let Some(rest) = line.strip_prefix(prefix) {
-            return Some(rest);
-        }
-    }
-    None
-}
-
-fn list_item(line: &str) -> Option<&str> {
-    for prefix in ["- ", "* ", "+ "] {
-        if let Some(rest) = line.strip_prefix(prefix) {
-            return Some(rest);
-        }
-    }
-    None
-}
-
-fn quote_line(line: &str) -> Option<&str> {
-    line.strip_prefix("> ")
-}
-
-fn parse_inline_code(line: &str) -> Vec<Span<'static>> {
-    let mut spans = Vec::new();
-    let mut rest = line;
-    let mut in_code = false;
-
-    while let Some(idx) = rest.find('`') {
-        let part = &rest[..idx];
-        if !part.is_empty() {
-            spans.push(styled_inline(part.to_string(), in_code));
-        }
-
-        in_code = !in_code;
-        rest = &rest[idx + 1..];
-    }
-
-    if !rest.is_empty() {
-        spans.push(styled_inline(rest.to_string(), in_code));
-    }
-
-    if spans.is_empty() {
-        spans.push(Span::raw(String::new()));
-    }
-
-    spans
-}
-
-fn styled_inline(text: String, in_code: bool) -> Span<'static> {
-    if in_code {
-        Span::styled(
-            text,
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        Span::raw(text)
-    }
+fn slice_chars(text: &str, start: usize, end: usize) -> String {
+    text.chars()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect()
 }

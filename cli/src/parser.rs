@@ -12,9 +12,26 @@ pub struct Cli {
 pub enum Commands {
     Init,
     Version,
-    New { name: Option<String> },
+    New {
+        name: Option<String>,
+    },
     List,
-    Find { query: String },
-    Delete { query: String },
-    Edit { path: Option<String> },
+    Find {
+        query: String,
+    },
+    Delete {
+        query: String,
+    },
+    Edit {
+        path: Option<String>,
+    },
+    Plugins {
+        #[command(subcommand)]
+        command: PluginCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PluginCommands {
+    Run { slug: String },
 }
