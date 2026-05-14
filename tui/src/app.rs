@@ -1,11 +1,10 @@
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use core::context::StorageContext;
 use core::index::{NoteIndex, NoteMeta, normalize_slug, note_path};
-use core::plugin::apply_plugins_in_file;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {
@@ -40,6 +39,9 @@ pub struct App {
     pub focus: FocusPane,
     pub command_mode: bool,
     pub command_input: String,
+    pub new_note_popup: bool,
+    pub new_note_input: String,
+    pub help_popup: bool,
     pub status: String,
     pub notes: Vec<NoteMeta>,
     pub selected_note: usize,
@@ -50,7 +52,6 @@ pub struct App {
     pub current_note_slug: Option<String>,
 
     notes_root: PathBuf,
-    plugins_root: PathBuf,
     index: NoteIndex,
     current_note_path: Option<PathBuf>,
     editor_mode: EditorMode,
@@ -78,6 +79,9 @@ impl App {
             focus: FocusPane::Preview,
             command_mode: false,
             command_input: String::new(),
+            new_note_popup: false,
+            new_note_input: String::new(),
+            help_popup: false,
             status: String::from(
                 "tab/shift+tab: pane, h/j/k/l: move, i/a/o: insert, : for commands, ctrl+s: save",
             ),
@@ -89,7 +93,6 @@ impl App {
             editor_scroll: 0,
             current_note_slug: None,
             notes_root: config.notes_dir,
-            plugins_root: config.plugins_dir,
             index,
             current_note_path: None,
             editor_mode: EditorMode::Normal,
@@ -113,6 +116,12 @@ impl App {
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        if self.new_note_popup {
+            return self.handle_new_note_popup_input(key);
+        }
+        if self.help_popup {
+            return self.handle_help_popup_input(key);
+        }
         if self.command_mode {
             return self.handle_command_input(key);
         }
@@ -123,6 +132,20 @@ impl App {
 
         if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('s')) {
             self.save_current_note()?;
+            return Ok(());
+        }
+        if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('n')) {
+            self.new_note_popup = true;
+            self.new_note_input.clear();
+            self.status = "new note".to_string();
+            return Ok(());
+        }
+        if !key.modifiers.contains(KeyModifiers::CONTROL)
+            && !key.modifiers.contains(KeyModifiers::ALT)
+            && matches!(key.code, KeyCode::Char('?'))
+        {
+            self.help_popup = true;
+            self.pending_leader = false;
             return Ok(());
         }
 
@@ -306,6 +329,39 @@ impl App {
         Ok(())
     }
 
+    fn handle_new_note_popup_input(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.new_note_popup = false;
+                self.new_note_input.clear();
+                self.status = "new note cancelled".to_string();
+            }
+            KeyCode::Enter => {
+                let name = std::mem::take(&mut self.new_note_input);
+                self.new_note_popup = false;
+                self.create_new_note(name.trim())?;
+            }
+            KeyCode::Backspace => {
+                self.new_note_input.pop();
+            }
+            KeyCode::Char(c)
+                if !key.modifiers.contains(KeyModifiers::CONTROL)
+                    && !key.modifiers.contains(KeyModifiers::ALT) =>
+            {
+                self.new_note_input.push(c);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_help_popup_input(&mut self, key: KeyEvent) -> anyhow::Result<()> {
+        if matches!(key.code, KeyCode::Esc | KeyCode::Char('?')) {
+            self.help_popup = false;
+        }
+        Ok(())
+    }
+
     fn execute_command(&mut self, command: &str) -> anyhow::Result<()> {
         if command.is_empty() {
             return Ok(());
@@ -350,13 +406,6 @@ impl App {
             }
             "r" => {
                 self.reload_notes()?;
-            }
-            "plugins" => {
-                let sub = parts.next().unwrap_or("");
-                match sub {
-                    "run" => self.run_plugins_for_current_note()?,
-                    _ => self.status = "usage: :plugins run".to_string(),
-                }
             }
             _ => {
                 self.status = format!("unknown command: {cmd}");
@@ -682,52 +731,6 @@ impl App {
         Ok(())
     }
 
-    fn run_plugins_for_current_note(&mut self) -> anyhow::Result<()> {
-        if self.dirty {
-            self.status = "unsaved changes; save with :w before plugins run".to_string();
-            return Ok(());
-        }
-
-        let Some(path) = self.current_note_path.as_ref() else {
-            self.status = "no note opened".to_string();
-            return Ok(());
-        };
-
-        let report = apply_plugins_in_file(path, &self.plugins_root)?;
-        self.reload_current_note_from_disk()?;
-
-        if report.errors.is_empty() {
-            self.status = format!("plugins run: {} replacements", report.replacements);
-        } else {
-            self.status = format!(
-                "plugins run: {} replacements, {} errors",
-                report.replacements,
-                report.errors.len()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn reload_current_note_from_disk(&mut self) -> anyhow::Result<()> {
-        let Some(path) = self.current_note_path.as_ref() else {
-            return Ok(());
-        };
-
-        let content = std::fs::read_to_string(path)?;
-        self.editor_lines = split_lines(&content);
-        self.ensure_has_line();
-        self.cursor_row = 0;
-        self.cursor_col = 0;
-        self.editor_scroll = 0;
-        self.visual_anchor = None;
-        self.editor_mode = EditorMode::Normal;
-        self.dirty = false;
-        self.undo_stack.clear();
-        self.refresh_links();
-        Ok(())
-    }
-
     fn refresh_links(&mut self) {
         let mut links = BTreeSet::new();
 
@@ -740,7 +743,12 @@ impl App {
                 };
 
                 let raw = &rest[..end];
-                let slug = normalize_slug(raw);
+                let target = raw
+                    .split_once('|')
+                    .map(|(target, _)| target)
+                    .unwrap_or(raw)
+                    .trim();
+                let slug = normalize_slug(target);
                 if !slug.is_empty() {
                     links.insert(slug);
                 }
@@ -760,6 +768,33 @@ impl App {
             self.selected_note = self.notes.len().saturating_sub(1);
         }
         self.status = format!("loaded {} notes", self.notes.len());
+        Ok(())
+    }
+
+    fn create_new_note(&mut self, raw_name: &str) -> anyhow::Result<()> {
+        if self.dirty {
+            self.status = "unsaved changes; save with :w first".to_string();
+            return Ok(());
+        }
+
+        let normalized = raw_name.trim();
+        if normalized.is_empty() {
+            self.status = "note name cannot be empty".to_string();
+            return Ok(());
+        }
+
+        let note = self.index.create_note(normalized)?;
+        let path = note_path(&self.notes_root, &note.slug);
+        if !path.exists() {
+            std::fs::File::create(&path)?;
+        }
+
+        self.reload_notes()?;
+        if let Some(pos) = self.notes.iter().position(|n| n.id == note.id) {
+            self.selected_note = pos;
+        }
+        self.open_note_by_slug_force(&note.slug, true)?;
+        self.status = format!("created {}", note.slug);
         Ok(())
     }
 
@@ -1330,12 +1365,23 @@ impl App {
         &self.editor_lines
     }
 
+    pub fn editor_mode_label(&self) -> &'static str {
+        match self.editor_mode {
+            EditorMode::Normal => "NORMAL",
+            EditorMode::Insert => "INSERT",
+            EditorMode::Visual => "VISUAL",
+        }
+    }
+
     pub fn notes_tree_labels(&self) -> Vec<String> {
         self.notes
             .iter()
             .map(|note| {
                 let depth = note.slug.matches('/').count();
-                let leaf = note.slug.rsplit('/').next().unwrap_or(&note.slug);
+                let leaf = Path::new(&note.slug)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or(&note.slug);
                 let marker = if self.current_note_slug.as_deref() == Some(note.slug.as_str()) {
                     "*"
                 } else {
@@ -1344,14 +1390,6 @@ impl App {
                 format!("{marker} {}{}", "  ".repeat(depth), leaf)
             })
             .collect()
-    }
-
-    pub fn editor_mode(&self) -> EditorMode {
-        self.editor_mode
-    }
-
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
     }
 
     pub fn cursor_row(&self) -> usize {

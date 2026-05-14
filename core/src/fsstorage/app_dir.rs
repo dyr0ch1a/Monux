@@ -6,11 +6,12 @@ pub struct AppDir {
 
 impl AppDir {
     pub fn new() -> anyhow::Result<Self> {
-        let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("No home directory"))?;
+        let root = dirs::config_dir()
+            .or_else(dirs::home_dir)
+            .ok_or_else(|| anyhow::anyhow!("No config/home directory"))?
+            .join("monux");
 
-        Ok(Self {
-            root: home.join(".monux"),
-        })
+        Ok(Self { root })
     }
 
     pub fn init(&self) -> anyhow::Result<()> {

@@ -6,7 +6,7 @@ pub fn run(query: String) -> anyhow::Result<()> {
 
     let found = index.find(&query)?;
     for note in found {
-        println!("{}\t{}\t{}", note.id, note.slug, note.title);
+        println!("{}", note.title);
     }
 
     Ok(())

@@ -25,13 +25,4 @@ pub enum Commands {
     Edit {
         path: Option<String>,
     },
-    Plugins {
-        #[command(subcommand)]
-        command: PluginCommands,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum PluginCommands {
-    Run { slug: String },
 }

@@ -5,5 +5,4 @@ pub mod find;
 pub mod init;
 pub mod list;
 pub mod new;
-pub mod plugins;
 pub mod version;

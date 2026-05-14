@@ -6,7 +6,7 @@ pub fn run() -> anyhow::Result<()> {
 
     let notes = index.list()?;
     for note in notes {
-        println!("{}\t{}\t{}", note.id, note.slug, note.title);
+        println!("{}", note.title);
     }
 
     Ok(())

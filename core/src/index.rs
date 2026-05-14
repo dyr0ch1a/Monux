@@ -186,6 +186,7 @@ pub fn normalize_slug(raw: &str) -> String {
     if raw.is_empty() {
         return String::new();
     }
+    let raw = raw.split_once('|').map(|(target, _)| target).unwrap_or(raw);
 
     let last_component = std::path::Path::new(raw)
         .file_name()

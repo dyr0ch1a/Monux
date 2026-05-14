@@ -19,6 +19,6 @@ pub fn run(name: Option<String>) -> anyhow::Result<()> {
         std::fs::File::create(path)?;
     }
 
-    println!("{}\t{}", note.id, note.slug);
+    println!("{}", note.title);
     Ok(())
 }
