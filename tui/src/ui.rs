@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
@@ -13,7 +13,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let (panes_area, footer_area, command_area) = if app.command_mode {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(3)])
+            .constraints([
+                Constraint::Min(1),
+                Constraint::Length(1),
+                Constraint::Length(3),
+            ])
             .split(area);
         (vertical[0], vertical[1], Some(vertical[2]))
     } else {
@@ -90,18 +94,46 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         FocusPane::Links => "LINKS",
     };
     let mode = app.editor_mode_label();
-    let text = format!(" Focus: {focus} | Mode: {mode} | Help: ? ");
+    let base = format!(" Focus: {focus} | Mode: {mode} | Help: ? ");
+    let status = app.status.trim();
+    let is_action_result = !status.is_empty()
+        && !status.starts_with("-- ")
+        && !status.starts_with("leader:")
+        && !status.starts_with("d pending")
+        && !status.starts_with("y pending")
+        && status != "new note";
+
+    let text = if is_action_result {
+        format!("{base} {status}")
+    } else {
+        base
+    };
     let paragraph = Paragraph::new(text).style(Style::default().add_modifier(Modifier::REVERSED));
     frame.render_widget(paragraph, area);
 }
 
 fn draw_new_note_popup(frame: &mut Frame, app: &App, area: Rect) {
-    let popup = centered_rect(area, 60, 6);
+    let popup = centered_rect(area, 60, 8);
+    let name_label = if app.new_note_tags_focused {
+        "Name:"
+    } else {
+        "Name: <-"
+    };
+    let tags_label = if app.new_note_tags_focused {
+        "Tags (comma/space separated): <-"
+    } else {
+        "Tags (comma/space separated):"
+    };
     let text = Text::from(vec![
-        Line::from("New note name:"),
+        Line::from(name_label),
         Line::from(app.new_note_input.as_str()),
+        Line::from(tags_label),
+        Line::from(app.new_note_tags_input.as_str()),
         Line::from(""),
-        Line::styled("Enter: create, Esc: cancel", Style::default().add_modifier(Modifier::DIM)),
+        Line::styled(
+            "Tab: switch field, Enter: create, Esc: cancel",
+            Style::default().add_modifier(Modifier::DIM),
+        ),
     ]);
     let paragraph = Paragraph::new(text)
         .block(Block::default().borders(Borders::ALL).title("New Note"))
@@ -112,7 +144,10 @@ fn draw_new_note_popup(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_help_popup(frame: &mut Frame, area: Rect) {
     let popup = centered_rect(area, 72, 12);
     let text = Text::from(vec![
-        Line::styled("Key Bindings", Style::default().add_modifier(Modifier::BOLD)),
+        Line::styled(
+            "Key Bindings",
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
         Line::from(""),
         Line::from("Global:"),
         Line::from("  ?: toggle help"),
@@ -120,8 +155,15 @@ fn draw_help_popup(frame: &mut Frame, area: Rect) {
         Line::from("  Ctrl+S: save"),
         Line::from("  Tab / Shift+Tab: cycle panes"),
         Line::from("  : open command"),
+        Line::from("  Notes focus + Shift+D: delete note"),
+        Line::from("  :del <title>: delete note by title"),
+        Line::from("  :tags add <tags...>: add tags to current note"),
+        Line::from("  :tags list: show tags of current note"),
         Line::from(""),
-        Line::styled("Esc or ?: close", Style::default().add_modifier(Modifier::DIM)),
+        Line::styled(
+            "Esc or ?: close",
+            Style::default().add_modifier(Modifier::DIM),
+        ),
     ]);
     let paragraph = Paragraph::new(text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
@@ -130,12 +172,13 @@ fn draw_help_popup(frame: &mut Frame, area: Rect) {
 }
 
 fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
-    let links: Vec<ListItem> = if app.links.is_empty() {
-        vec![ListItem::new("<no wiki-links>")]
+    let labels = app.link_labels();
+    let links: Vec<ListItem> = if labels.is_empty() {
+        vec![ListItem::new("<no links>")]
     } else {
-        app.links
+        labels
             .iter()
-            .map(|link| ListItem::new(link.as_str()))
+            .map(|label| ListItem::new(label.as_str()))
             .collect()
     };
 
@@ -157,53 +200,79 @@ fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     app.ensure_cursor_visible(inner_height);
 
     let scroll = app.editor_scroll as usize;
-    let source = app.preview_source_lines();
     let mut rendered = Vec::new();
+    let source_len = app.preview_source_lines().len();
 
-    if source.is_empty() {
+    if source_len == 0 {
         rendered.push(Line::styled(
             "<empty file>",
             Style::default().add_modifier(Modifier::DIM),
         ));
     } else {
-        for (idx, line) in source.iter().enumerate().skip(scroll).take(inner_height) {
-            let gutter = format!("{:>4} ", idx + 1);
-            let mut spans = vec![Span::styled(gutter, Style::default().add_modifier(Modifier::DIM))];
-            let base_style = if idx == app.cursor_row() {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
+        let cursor_row = app.cursor_row();
+        let end = (scroll + inner_height).min(source_len);
+        for idx in scroll..end {
+            let Some(line) = app.preview_source_lines().get(idx).cloned() else {
+                continue;
             };
+            let rel = idx.abs_diff(cursor_row);
+            let gutter = format!("{:>4} ", rel);
+            let mut spans = vec![Span::styled(
+                gutter,
+                Style::default().add_modifier(Modifier::DIM),
+            )];
+            let base_style = Style::default();
 
             if let Some((sel_start, sel_end)) =
                 app.visual_selection_for_row(idx, line.chars().count())
             {
-                let before = slice_chars(line, 0, sel_start);
-                let selected = slice_chars(line, sel_start, sel_end);
-                let after = slice_chars(line, sel_end, line.chars().count());
+                let before = slice_chars(&line, 0, sel_start);
+                let selected = slice_chars(&line, sel_start, sel_end);
+                let after = slice_chars(&line, sel_end, line.chars().count());
 
                 if !before.is_empty() {
-                    spans.push(Span::styled(before, base_style));
+                    spans.extend(render_markdown_segment(&before, base_style));
                 }
                 if !selected.is_empty() {
-                    spans.push(Span::styled(selected, base_style.add_modifier(Modifier::BOLD)));
+                    let selected_spans = render_markdown_segment(&selected, base_style);
+                    spans.extend(apply_overlay_style(
+                        selected_spans,
+                        Style::default().bg(Color::White).fg(Color::Black),
+                    ));
                 }
                 if !after.is_empty() {
-                    spans.push(Span::styled(after, base_style));
+                    spans.extend(render_markdown_segment(&after, base_style));
                 }
                 if spans.len() == 1 {
                     spans.push(Span::styled(String::new(), base_style));
                 }
             } else {
-                spans.push(Span::styled(line.clone(), base_style));
+                if idx == cursor_row {
+                    spans.extend(render_markdown_segment_with_cursor(
+                        &line,
+                        base_style,
+                        Some(app.cursor_col()),
+                    ));
+                } else {
+                    if let Some(cached) = app.prerendered_preview_line(idx) {
+                        spans.extend(cached);
+                    } else {
+                        spans.extend(render_markdown_segment_with_cursor(&line, base_style, None));
+                    }
+                }
             }
 
             rendered.push(Line::from(spans));
         }
     }
 
+    let preview_title = if app.is_visual_mode() {
+        " VISUAL MODE "
+    } else {
+        ""
+    };
     let paragraph = Paragraph::new(Text::from(rendered))
-        .block(panel_block("", app.focus == FocusPane::Preview))
+        .block(panel_block(preview_title, app.focus == FocusPane::Preview))
         .wrap(Wrap { trim: false });
 
     frame.render_widget(paragraph, area);
@@ -277,11 +346,14 @@ fn place_editor_cursor(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn place_new_note_cursor(frame: &mut Frame, app: &App, area: Rect) {
-    let popup = centered_rect(area, 60, 6);
-    let input_width = app.new_note_input.chars().count() as u16;
+    let popup = centered_rect(area, 60, 8);
+    let (input_width, y) = if app.new_note_tags_focused {
+        (app.new_note_tags_input.chars().count() as u16, popup.y + 4)
+    } else {
+        (app.new_note_input.chars().count() as u16, popup.y + 2)
+    };
     let max_x = popup.x + popup.width.saturating_sub(2);
     let x = (popup.x + 1 + input_width).min(max_x);
-    let y = popup.y + 2;
     frame.set_cursor_position((x, y));
 }
 
@@ -312,4 +384,125 @@ fn centered_rect(area: Rect, width_percent: u16, height: u16) -> Rect {
     let x = area.x + area.width.saturating_sub(popup_width) / 2;
     let y = area.y + area.height.saturating_sub(popup_height) / 2;
     Rect::new(x, y, popup_width, popup_height)
+}
+
+fn render_markdown_segment(segment: &str, base_style: Style) -> Vec<Span<'static>> {
+    render_markdown_segment_with_cursor(segment, base_style, None)
+}
+
+fn render_markdown_segment_with_cursor(
+    segment: &str,
+    base_style: Style,
+    cursor_char: Option<usize>,
+) -> Vec<Span<'static>> {
+    let trimmed = segment.trim_start();
+    let indent_len = segment.len().saturating_sub(trimmed.len());
+    let mut styled_base = base_style;
+
+    if trimmed.starts_with('#') {
+        styled_base = styled_base.add_modifier(Modifier::BOLD).fg(Color::Cyan);
+    } else if trimmed.starts_with("> ") || trimmed == ">" {
+        styled_base = styled_base.add_modifier(Modifier::DIM);
+    } else if trimmed.starts_with("```") {
+        styled_base = styled_base.fg(Color::Yellow);
+    }
+
+    let mut out: Vec<Span<'static>> = Vec::new();
+    if indent_len > 0 {
+        out.push(Span::styled(segment[..indent_len].to_string(), styled_base));
+    }
+
+    let text = &segment[indent_len..];
+    let mut cursor = 0usize;
+    let mut char_cursor = indent_len;
+    while cursor < text.len() {
+        let rest = &text[cursor..];
+
+        if let Some(content) = rest.strip_prefix("`") {
+            if let Some(end) = content.find('`') {
+                let token = &rest[..end + 2];
+                char_cursor += token.chars().count();
+                out.push(Span::styled(
+                    token.to_string(),
+                    styled_base.bg(Color::DarkGray).fg(Color::White),
+                ));
+                cursor += end + 2;
+                continue;
+            }
+        }
+
+        if let Some(content) = rest.strip_prefix("[[") {
+            if let Some(end) = content.find("]]") {
+                let token = &rest[..end + 4];
+                let label = wikilink_display_label(token);
+                let token_len = token.chars().count();
+                let start_char = char_cursor;
+                let end_char = char_cursor + token_len;
+                let hovered = cursor_char
+                    .map(|col| col >= start_char && col < end_char)
+                    .unwrap_or(false);
+                if hovered {
+                    out.push(Span::styled(token.to_string(), styled_base));
+                } else {
+                    out.push(Span::styled(
+                        label,
+                        styled_base
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::UNDERLINED),
+                    ));
+                }
+                char_cursor = end_char;
+                cursor += end + 4;
+                continue;
+            }
+        }
+
+        let next_inline = rest.find('`');
+        let next_wikilink = rest.find("[[");
+        let next = match (next_inline, next_wikilink) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => rest.len(),
+        };
+
+        let plain = &rest[..next];
+        if !plain.is_empty() {
+            out.push(Span::styled(plain.to_string(), styled_base));
+            char_cursor += plain.chars().count();
+        }
+        cursor += next.max(1);
+    }
+
+    if out.is_empty() {
+        out.push(Span::styled(String::new(), styled_base));
+    }
+
+    out
+}
+
+fn apply_overlay_style(spans: Vec<Span<'static>>, overlay: Style) -> Vec<Span<'static>> {
+    spans
+        .into_iter()
+        .map(|span| Span::styled(span.content, span.style.patch(overlay)))
+        .collect()
+}
+
+fn wikilink_display_label(token: &str) -> String {
+    let inner = token
+        .strip_prefix("[[")
+        .and_then(|s| s.strip_suffix("]]"))
+        .unwrap_or(token)
+        .trim();
+    if inner.is_empty() {
+        return token.to_string();
+    }
+    if let Some((name, alias)) = inner.split_once('|') {
+        let alias = alias.trim();
+        if !alias.is_empty() {
+            return alias.to_string();
+        }
+        return name.trim().to_string();
+    }
+    inner.to_string()
 }

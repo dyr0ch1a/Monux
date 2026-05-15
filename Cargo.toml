@@ -1,8 +1,10 @@
 [workspace]
+resolver = "3"
 members = [
   "core",
   "cli",
   "tui"
 ]
+
 
 

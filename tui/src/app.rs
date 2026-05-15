@@ -1,10 +1,15 @@
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::io::ErrorKind;
+use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::{
+    style::{Color, Modifier, Style},
+    text::Span,
+};
 
 use core::context::StorageContext;
-use core::index::{NoteIndex, NoteMeta, normalize_slug, note_path};
+use core::index::{NoteIndex, NoteMeta, normalize_slug, note_path, parse_tags_input};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {
@@ -41,6 +46,8 @@ pub struct App {
     pub command_input: String,
     pub new_note_popup: bool,
     pub new_note_input: String,
+    pub new_note_tags_input: String,
+    pub new_note_tags_focused: bool,
     pub help_popup: bool,
     pub status: String,
     pub notes: Vec<NoteMeta>,
@@ -65,6 +72,8 @@ pub struct App {
     undo_stack: Vec<UndoState>,
     yank_register: Option<YankRegister>,
     dirty: bool,
+    preview_prerender_valid: bool,
+    preview_prerender_lines: Vec<Vec<Span<'static>>>,
 }
 
 impl App {
@@ -81,6 +90,8 @@ impl App {
             command_input: String::new(),
             new_note_popup: false,
             new_note_input: String::new(),
+            new_note_tags_input: String::new(),
+            new_note_tags_focused: false,
             help_popup: false,
             status: String::from(
                 "tab/shift+tab: pane, h/j/k/l: move, i/a/o: insert, : for commands, ctrl+s: save",
@@ -106,6 +117,8 @@ impl App {
             undo_stack: Vec::new(),
             yank_register: None,
             dirty: false,
+            preview_prerender_valid: false,
+            preview_prerender_lines: Vec::new(),
         };
 
         if !app.notes.is_empty() {
@@ -137,6 +150,8 @@ impl App {
         if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('n')) {
             self.new_note_popup = true;
             self.new_note_input.clear();
+            self.new_note_tags_input.clear();
+            self.new_note_tags_focused = false;
             self.status = "new note".to_string();
             return Ok(());
         }
@@ -190,6 +205,11 @@ impl App {
             },
             KeyCode::Down | KeyCode::Char('j') => self.move_down(),
             KeyCode::Up | KeyCode::Char('k') => self.move_up(),
+            KeyCode::Char('D') => {
+                if self.focus == FocusPane::Notes {
+                    self.delete_selected_note()?;
+                }
+            }
             KeyCode::Char('r') => {
                 self.reload_notes()?;
             }
@@ -334,21 +354,38 @@ impl App {
             KeyCode::Esc => {
                 self.new_note_popup = false;
                 self.new_note_input.clear();
+                self.new_note_tags_input.clear();
+                self.new_note_tags_focused = false;
                 self.status = "new note cancelled".to_string();
             }
             KeyCode::Enter => {
                 let name = std::mem::take(&mut self.new_note_input);
+                let tags = std::mem::take(&mut self.new_note_tags_input);
                 self.new_note_popup = false;
-                self.create_new_note(name.trim())?;
+                self.new_note_tags_focused = false;
+                if let Err(err) = self.create_new_note(name.trim(), &tags) {
+                    self.status = format!("new note error: {err}");
+                }
+            }
+            KeyCode::Tab => {
+                self.new_note_tags_focused = !self.new_note_tags_focused;
             }
             KeyCode::Backspace => {
-                self.new_note_input.pop();
+                if self.new_note_tags_focused {
+                    self.new_note_tags_input.pop();
+                } else {
+                    self.new_note_input.pop();
+                }
             }
             KeyCode::Char(c)
                 if !key.modifiers.contains(KeyModifiers::CONTROL)
                     && !key.modifiers.contains(KeyModifiers::ALT) =>
             {
-                self.new_note_input.push(c);
+                if self.new_note_tags_focused {
+                    self.new_note_tags_input.push(c);
+                } else {
+                    self.new_note_input.push(c);
+                }
             }
             _ => {}
         }
@@ -406,6 +443,33 @@ impl App {
             }
             "r" => {
                 self.reload_notes()?;
+            }
+            "del" => {
+                let title = parts.collect::<Vec<_>>().join(" ");
+                if title.trim().is_empty() {
+                    self.status = "usage: :del <title>".to_string();
+                } else {
+                    self.delete_note_by_title(&title)?;
+                }
+            }
+            "tags" => {
+                let sub = parts.next().unwrap_or_default();
+                match sub {
+                    "add" => {
+                        let rest = parts.collect::<Vec<_>>().join(" ");
+                        if rest.trim().is_empty() {
+                            self.status = "usage: :tags add <tags...>".to_string();
+                        } else {
+                            self.add_tags_to_current_note(&rest)?;
+                        }
+                    }
+                    "list" => {
+                        self.list_tags_for_current_note()?;
+                    }
+                    _ => {
+                        self.status = "usage: :tags <add|list> ...".to_string();
+                    }
+                }
             }
             _ => {
                 self.status = format!("unknown command: {cmd}");
@@ -490,7 +554,7 @@ impl App {
                 self.cursor_col = 0;
                 self.dirty = true;
                 self.enter_insert_mode();
-                self.refresh_links();
+                self.on_editor_content_changed();
             }
             KeyCode::Char('O') => {
                 self.ensure_has_line();
@@ -500,7 +564,7 @@ impl App {
                 self.cursor_col = 0;
                 self.dirty = true;
                 self.enter_insert_mode();
-                self.refresh_links();
+                self.on_editor_content_changed();
             }
             KeyCode::Char('x') => {
                 self.delete_char_under_cursor();
@@ -654,6 +718,72 @@ impl App {
         self.open_note_by_slug(&note.slug)
     }
 
+    fn delete_selected_note(&mut self) -> anyhow::Result<()> {
+        if self.notes.is_empty() {
+            self.status = "notes index is empty".to_string();
+            return Ok(());
+        }
+
+        let Some(note) = self.notes.get(self.selected_note).cloned() else {
+            return Ok(());
+        };
+
+        self.delete_note(note)
+    }
+
+    fn delete_note_by_title(&mut self, title: &str) -> anyhow::Result<()> {
+        let normalized = title.trim();
+        let Some(note) = self
+            .notes
+            .iter()
+            .find(|note| note.title == normalized)
+            .cloned()
+        else {
+            self.status = format!("note with title '{}' not found", normalized);
+            return Ok(());
+        };
+
+        self.delete_note(note)
+    }
+
+    fn delete_note(&mut self, note: NoteMeta) -> anyhow::Result<()> {
+        if self.dirty {
+            self.status = "unsaved changes; save with :w first".to_string();
+            return Ok(());
+        }
+
+        let path = note_path(&self.notes_root, &note.slug);
+        match std::fs::remove_file(&path) {
+            Ok(_) => {}
+            Err(err) if err.kind() == ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
+        }
+
+        self.index.delete(note.id)?;
+        self.reload_notes()?;
+
+        if self.current_note_slug.as_deref() == Some(note.slug.as_str()) {
+            if self.notes.is_empty() {
+                self.current_note_slug = None;
+                self.current_note_path = None;
+                self.editor_lines = vec![String::new()];
+                self.links.clear();
+                self.selected_link = 0;
+                self.cursor_row = 0;
+                self.cursor_col = 0;
+                self.editor_scroll = 0;
+            } else {
+                self.selected_note = self.selected_note.min(self.notes.len().saturating_sub(1));
+                self.open_selected_note()?;
+            }
+        } else if self.selected_note >= self.notes.len() {
+            self.selected_note = self.notes.len().saturating_sub(1);
+        }
+
+        self.status = format!("deleted {}", note.slug);
+        Ok(())
+    }
+
     fn open_selected_link(&mut self) -> anyhow::Result<()> {
         if self.links.is_empty() {
             return Ok(());
@@ -695,7 +825,7 @@ impl App {
         let content = std::fs::read_to_string(&path)?;
         self.editor_lines = split_lines(&content);
         self.ensure_has_line();
-        self.current_note_path = Some(path);
+        self.current_note_path = Some(path.clone());
         self.current_note_slug = Some(note.slug.clone());
         self.editor_mode = EditorMode::Normal;
         self.cursor_row = 0;
@@ -710,7 +840,7 @@ impl App {
         }
 
         self.status = format!("opened {}", note.slug);
-        self.refresh_links();
+        self.on_editor_content_changed();
         Ok(())
     }
 
@@ -762,6 +892,28 @@ impl App {
         }
     }
 
+    fn invalidate_preview_prerender(&mut self) {
+        self.preview_prerender_valid = false;
+    }
+
+    fn on_editor_content_changed(&mut self) {
+        self.invalidate_preview_prerender();
+        self.refresh_links();
+    }
+
+    pub fn prerendered_preview_line(&mut self, idx: usize) -> Option<Vec<Span<'static>>> {
+        if !self.preview_prerender_valid {
+            self.preview_prerender_lines = self
+                .editor_lines
+                .iter()
+                .map(|line| prerender_markdown_line(line))
+                .collect();
+            self.preview_prerender_valid = true;
+        }
+
+        self.preview_prerender_lines.get(idx).cloned()
+    }
+
     fn reload_notes(&mut self) -> anyhow::Result<()> {
         self.notes = self.index.list()?;
         if self.selected_note >= self.notes.len() {
@@ -771,7 +923,7 @@ impl App {
         Ok(())
     }
 
-    fn create_new_note(&mut self, raw_name: &str) -> anyhow::Result<()> {
+    fn create_new_note(&mut self, raw_name: &str, raw_tags: &str) -> anyhow::Result<()> {
         if self.dirty {
             self.status = "unsaved changes; save with :w first".to_string();
             return Ok(());
@@ -783,7 +935,10 @@ impl App {
             return Ok(());
         }
 
-        let note = self.index.create_note(normalized)?;
+        std::fs::create_dir_all(&self.notes_root)?;
+
+        let tags = parse_tags_input(raw_tags);
+        let note = self.index.create_note_with_tags(normalized, &tags)?;
         let path = note_path(&self.notes_root, &note.slug);
         if !path.exists() {
             std::fs::File::create(&path)?;
@@ -794,7 +949,40 @@ impl App {
             self.selected_note = pos;
         }
         self.open_note_by_slug_force(&note.slug, true)?;
-        self.status = format!("created {}", note.slug);
+        if tags.is_empty() {
+            self.status = format!("created {}", note.slug);
+        } else {
+            self.status = format!("created {} with #{}", note.slug, tags.join(" #"));
+        }
+        Ok(())
+    }
+
+    fn add_tags_to_current_note(&mut self, raw_tags: &str) -> anyhow::Result<()> {
+        let Some(slug) = self.current_note_slug.clone() else {
+            self.status = "no note opened".to_string();
+            return Ok(());
+        };
+        let parsed = parse_tags_input(raw_tags);
+        if parsed.is_empty() {
+            self.status = "tags are empty".to_string();
+            return Ok(());
+        }
+        let merged = self.index.add_tags_to_slug(&slug, &parsed)?;
+        self.status = format!("{} tags: #{}", slug, merged.join(" #"));
+        Ok(())
+    }
+
+    fn list_tags_for_current_note(&mut self) -> anyhow::Result<()> {
+        let Some(slug) = self.current_note_slug.clone() else {
+            self.status = "no note opened".to_string();
+            return Ok(());
+        };
+        let tags = self.index.list_tags_by_slug(&slug)?;
+        if tags.is_empty() {
+            self.status = format!("{} has no tags", slug);
+        } else {
+            self.status = format!("{} tags: #{}", slug, tags.join(" #"));
+        }
         Ok(())
     }
 
@@ -831,7 +1019,7 @@ impl App {
         self.visual_anchor = None;
         self.pending_normal_op = None;
         self.clamp_cursor();
-        self.refresh_links();
+        self.on_editor_content_changed();
         self.status = "undo".to_string();
     }
 
@@ -1038,7 +1226,7 @@ impl App {
             line.insert(idx, ch);
             self.cursor_col += 1;
             self.dirty = true;
-            self.refresh_links();
+            self.on_editor_content_changed();
         }
     }
 
@@ -1058,7 +1246,7 @@ impl App {
         self.cursor_row += 1;
         self.cursor_col = 0;
         self.dirty = true;
-        self.refresh_links();
+        self.on_editor_content_changed();
     }
 
     fn backspace_in_insert_mode(&mut self) {
@@ -1075,7 +1263,7 @@ impl App {
                 line.drain(start..end);
                 self.cursor_col -= 1;
                 self.dirty = true;
-                self.refresh_links();
+                self.on_editor_content_changed();
             }
             return;
         }
@@ -1089,7 +1277,7 @@ impl App {
             self.cursor_row -= 1;
             self.cursor_col = prev_len;
             self.dirty = true;
-            self.refresh_links();
+            self.on_editor_content_changed();
         }
     }
 
@@ -1116,14 +1304,14 @@ impl App {
                 let end = char_to_byte_idx(line, col + 1);
                 line.drain(start..end);
                 self.dirty = true;
-                self.refresh_links();
+                self.on_editor_content_changed();
             }
         } else if row + 1 < self.editor_lines.len() {
             self.push_undo_snapshot();
             let next = self.editor_lines.remove(row + 1);
             self.editor_lines[row].push_str(&next);
             self.dirty = true;
-            self.refresh_links();
+            self.on_editor_content_changed();
         }
 
         self.clamp_cursor();
@@ -1146,7 +1334,7 @@ impl App {
 
         self.clamp_cursor_col();
         self.dirty = true;
-        self.refresh_links();
+        self.on_editor_content_changed();
         self.status = "deleted line".to_string();
     }
 
@@ -1198,7 +1386,7 @@ impl App {
         self.cursor_col = start_col;
         self.clamp_cursor();
         self.dirty = true;
-        self.refresh_links();
+        self.on_editor_content_changed();
         self.exit_visual_mode();
         self.status = "deleted selection".to_string();
     }
@@ -1255,7 +1443,7 @@ impl App {
 
         self.dirty = true;
         self.clamp_cursor();
-        self.refresh_links();
+        self.on_editor_content_changed();
         self.status = "put".to_string();
     }
 
@@ -1373,21 +1561,34 @@ impl App {
         }
     }
 
+    pub fn is_visual_mode(&self) -> bool {
+        self.editor_mode == EditorMode::Visual
+    }
+
     pub fn notes_tree_labels(&self) -> Vec<String> {
         self.notes
             .iter()
             .map(|note| {
                 let depth = note.slug.matches('/').count();
-                let leaf = Path::new(&note.slug)
-                    .file_name()
-                    .and_then(|value| value.to_str())
-                    .unwrap_or(&note.slug);
                 let marker = if self.current_note_slug.as_deref() == Some(note.slug.as_str()) {
                     "*"
                 } else {
                     " "
                 };
-                format!("{marker} {}{}", "  ".repeat(depth), leaf)
+                format!("{marker} {}{}", "  ".repeat(depth), note.title)
+            })
+            .collect()
+    }
+
+    pub fn link_labels(&self) -> Vec<String> {
+        self.links
+            .iter()
+            .map(|slug| {
+                self.notes
+                    .iter()
+                    .find(|note| note.slug == *slug)
+                    .map(|note| note.title.clone())
+                    .unwrap_or_else(|| slug.clone())
             })
             .collect()
     }
@@ -1491,4 +1692,96 @@ fn char_class(ch: char) -> CharClass {
 
 fn is_word_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_'
+}
+
+fn prerender_markdown_line(line: &str) -> Vec<Span<'static>> {
+    let trimmed = line.trim_start();
+    let indent_len = line.len().saturating_sub(trimmed.len());
+    let mut styled_base = Style::default();
+
+    if trimmed.starts_with('#') {
+        styled_base = styled_base.add_modifier(Modifier::BOLD).fg(Color::Cyan);
+    } else if trimmed.starts_with("> ") || trimmed == ">" {
+        styled_base = styled_base.add_modifier(Modifier::DIM);
+    } else if trimmed.starts_with("```") {
+        styled_base = styled_base.fg(Color::Yellow);
+    }
+
+    let mut out: Vec<Span<'static>> = Vec::new();
+    if indent_len > 0 {
+        out.push(Span::styled(line[..indent_len].to_string(), styled_base));
+    }
+
+    let text = &line[indent_len..];
+    let mut cursor = 0usize;
+    while cursor < text.len() {
+        let rest = &text[cursor..];
+
+        if let Some(content) = rest.strip_prefix("`") {
+            if let Some(end) = content.find('`') {
+                let token = &rest[..end + 2];
+                out.push(Span::styled(
+                    token.to_string(),
+                    styled_base.bg(Color::DarkGray).fg(Color::White),
+                ));
+                cursor += end + 2;
+                continue;
+            }
+        }
+
+        if let Some(content) = rest.strip_prefix("[[") {
+            if let Some(end) = content.find("]]") {
+                let token = &rest[..end + 4];
+                let label = wikilink_display_label(token);
+                out.push(Span::styled(
+                    label,
+                    styled_base
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::UNDERLINED),
+                ));
+                cursor += end + 4;
+                continue;
+            }
+        }
+
+        let next_inline = rest.find('`');
+        let next_wikilink = rest.find("[[");
+        let next = match (next_inline, next_wikilink) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => rest.len(),
+        };
+
+        let plain = &rest[..next];
+        if !plain.is_empty() {
+            out.push(Span::styled(plain.to_string(), styled_base));
+        }
+        cursor += next.max(1);
+    }
+
+    if out.is_empty() {
+        out.push(Span::styled(String::new(), styled_base));
+    }
+
+    out
+}
+
+fn wikilink_display_label(token: &str) -> String {
+    let inner = token
+        .strip_prefix("[[")
+        .and_then(|s| s.strip_suffix("]]"))
+        .unwrap_or(token)
+        .trim();
+    if inner.is_empty() {
+        return token.to_string();
+    }
+    if let Some((name, alias)) = inner.split_once('|') {
+        let alias = alias.trim();
+        if !alias.is_empty() {
+            return alias.to_string();
+        }
+        return name.trim().to_string();
+    }
+    inner.to_string()
 }

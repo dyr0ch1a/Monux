@@ -14,15 +14,30 @@ pub enum Commands {
     Version,
     New {
         name: Option<String>,
+        #[arg(short, long)]
+        tags: Option<String>,
     },
     List,
     Find {
         query: String,
+        #[arg(short, long)]
+        tag: Option<String>,
     },
-    Delete {
-        query: String,
+    Delete { query: String },
+    Edit { path: Option<String> },
+    Tags {
+        #[command(subcommand)]
+        command: TagsCommands,
     },
-    Edit {
-        path: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TagsCommands {
+    Add {
+        note: String,
+        tags: String,
+    },
+    List {
+        note: String,
     },
 }

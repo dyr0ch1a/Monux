@@ -5,6 +5,7 @@ use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 const NOTES_BY_ID: TableDefinition<u64, &str> = TableDefinition::new("notes_by_id");
 const TITLES_BY_ID: TableDefinition<u64, &str> = TableDefinition::new("titles_by_id");
 const SLUG_TO_ID: TableDefinition<&str, u64> = TableDefinition::new("slug_to_id");
+const TAGS_BY_ID: TableDefinition<u64, &str> = TableDefinition::new("tags_by_id");
 const META: TableDefinition<&str, u64> = TableDefinition::new("meta");
 
 #[derive(Debug, Clone)]
@@ -70,6 +71,12 @@ impl NoteIndex {
         })
     }
 
+    pub fn create_note_with_tags(&self, name: &str, tags: &[String]) -> anyhow::Result<NoteMeta> {
+        let note = self.create_note(name)?;
+        self.add_tags(note.id, tags)?;
+        Ok(note)
+    }
+
     pub fn list(&self) -> anyhow::Result<Vec<NoteMeta>> {
         let read_txn = self.db.begin_read()?;
         let notes = read_txn.open_table(NOTES_BY_ID)?;
@@ -106,6 +113,69 @@ impl NoteIndex {
                     || note.title.to_lowercase().contains(&query)
             })
             .collect())
+    }
+
+    pub fn find_by_tag(&self, tag: &str) -> anyhow::Result<Vec<NoteMeta>> {
+        let wanted = normalize_tag(tag);
+        if wanted.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let notes = self.list()?;
+        let mut out = Vec::new();
+        for note in notes {
+            let tags = self.list_tags(note.id)?;
+            if tags.iter().any(|t| t == &wanted) {
+                out.push(note);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn add_tags(&self, note_id: u64, tags: &[String]) -> anyhow::Result<Vec<String>> {
+        let mut merged = self.list_tags(note_id)?;
+        merged.extend(tags.iter().cloned());
+        merged = normalize_tags(&merged);
+
+        let encoded = encode_tags(&merged);
+        let write_txn = self.db.begin_write()?;
+        {
+            let notes = write_txn.open_table(NOTES_BY_ID)?;
+            if notes.get(&note_id)?.is_none() {
+                anyhow::bail!("note id '{}' not found", note_id);
+            }
+
+            let mut table = write_txn.open_table(TAGS_BY_ID)?;
+            table.insert(&note_id, encoded.as_str())?;
+        }
+        write_txn.commit()?;
+        Ok(merged)
+    }
+
+    pub fn add_tags_to_slug(&self, slug: &str, tags: &[String]) -> anyhow::Result<Vec<String>> {
+        let normalized = normalize_slug(slug);
+        let id = self
+            .id_by_slug(&normalized)?
+            .ok_or_else(|| anyhow::anyhow!("note '{}' not found", normalized))?;
+        self.add_tags(id, tags)
+    }
+
+    pub fn list_tags(&self, note_id: u64) -> anyhow::Result<Vec<String>> {
+        let read_txn = self.db.begin_read()?;
+        let table = read_txn.open_table(TAGS_BY_ID)?;
+        let raw = table
+            .get(&note_id)?
+            .map(|value| value.value().to_string())
+            .unwrap_or_default();
+        Ok(decode_tags(&raw))
+    }
+
+    pub fn list_tags_by_slug(&self, slug: &str) -> anyhow::Result<Vec<String>> {
+        let normalized = normalize_slug(slug);
+        let id = self
+            .id_by_slug(&normalized)?
+            .ok_or_else(|| anyhow::anyhow!("note '{}' not found", normalized))?;
+        self.list_tags(id)
     }
 
     pub fn get_by_slug(&self, raw_slug: &str) -> anyhow::Result<Option<NoteMeta>> {
@@ -146,12 +216,14 @@ impl NoteIndex {
             let mut notes = write_txn.open_table(NOTES_BY_ID)?;
             let mut titles = write_txn.open_table(TITLES_BY_ID)?;
             let mut slug_to_id = write_txn.open_table(SLUG_TO_ID)?;
+            let mut tags = write_txn.open_table(TAGS_BY_ID)?;
 
             let slug = notes.get(&id)?.map(|value| value.value().to_string());
             if let Some(slug) = slug {
                 notes.remove(&id)?;
                 titles.remove(&id)?;
                 slug_to_id.remove(slug.as_str())?;
+                tags.remove(&id)?;
             }
         }
         write_txn.commit()?;
@@ -227,4 +299,47 @@ fn slugify(input: &str) -> String {
     }
 
     slug.trim_matches('-').to_string()
+}
+
+pub fn parse_tags_input(raw: &str) -> Vec<String> {
+    let tokens: Vec<String> = raw
+        .split(|ch: char| ch == ',' || ch.is_whitespace())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    normalize_tags(&tokens)
+}
+
+fn normalize_tags(tags: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    for tag in tags {
+        let normalized = normalize_tag(tag);
+        if !normalized.is_empty() && !out.iter().any(|existing| existing == &normalized) {
+            out.push(normalized);
+        }
+    }
+    out
+}
+
+fn normalize_tag(raw: &str) -> String {
+    let mut out = String::new();
+    for ch in raw.trim().chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch.to_ascii_lowercase());
+        }
+    }
+    out
+}
+
+fn encode_tags(tags: &[String]) -> String {
+    tags.join(",")
+}
+
+fn decode_tags(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect()
 }
