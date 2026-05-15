@@ -1223,8 +1223,14 @@ impl App {
         let col = self.cursor_col;
         if let Some(line) = self.current_line_mut() {
             let idx = char_to_byte_idx(line, col);
-            line.insert(idx, ch);
-            self.cursor_col += 1;
+            if ch == '[' {
+                line.insert(idx, '[');
+                line.insert(idx + 1, ']');
+                self.cursor_col += 1;
+            } else {
+                line.insert(idx, ch);
+                self.cursor_col += 1;
+            }
             self.dirty = true;
             self.on_editor_content_changed();
         }
@@ -1732,9 +1738,8 @@ fn prerender_markdown_line(line: &str) -> Vec<Span<'static>> {
         if let Some(content) = rest.strip_prefix("[[") {
             if let Some(end) = content.find("]]") {
                 let token = &rest[..end + 4];
-                let label = wikilink_display_label(token);
                 out.push(Span::styled(
-                    label,
+                    token.to_string(),
                     styled_base
                         .fg(Color::Green)
                         .add_modifier(Modifier::UNDERLINED),
@@ -1765,23 +1770,4 @@ fn prerender_markdown_line(line: &str) -> Vec<Span<'static>> {
     }
 
     out
-}
-
-fn wikilink_display_label(token: &str) -> String {
-    let inner = token
-        .strip_prefix("[[")
-        .and_then(|s| s.strip_suffix("]]"))
-        .unwrap_or(token)
-        .trim();
-    if inner.is_empty() {
-        return token.to_string();
-    }
-    if let Some((name, alias)) = inner.split_once('|') {
-        let alias = alias.trim();
-        if !alias.is_empty() {
-            return alias.to_string();
-        }
-        return name.trim().to_string();
-    }
-    inner.to_string()
 }

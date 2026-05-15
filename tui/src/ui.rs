@@ -248,16 +248,12 @@ fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
                 }
             } else {
                 if idx == cursor_row {
-                    spans.extend(render_markdown_segment_with_cursor(
-                        &line,
-                        base_style,
-                        Some(app.cursor_col()),
-                    ));
+                    spans.extend(render_markdown_segment_with_cursor(&line, base_style));
                 } else {
                     if let Some(cached) = app.prerendered_preview_line(idx) {
                         spans.extend(cached);
                     } else {
-                        spans.extend(render_markdown_segment_with_cursor(&line, base_style, None));
+                        spans.extend(render_markdown_segment_with_cursor(&line, base_style));
                     }
                 }
             }
@@ -387,14 +383,10 @@ fn centered_rect(area: Rect, width_percent: u16, height: u16) -> Rect {
 }
 
 fn render_markdown_segment(segment: &str, base_style: Style) -> Vec<Span<'static>> {
-    render_markdown_segment_with_cursor(segment, base_style, None)
+    render_markdown_segment_with_cursor(segment, base_style)
 }
 
-fn render_markdown_segment_with_cursor(
-    segment: &str,
-    base_style: Style,
-    cursor_char: Option<usize>,
-) -> Vec<Span<'static>> {
+fn render_markdown_segment_with_cursor(segment: &str, base_style: Style) -> Vec<Span<'static>> {
     let trimmed = segment.trim_start();
     let indent_len = segment.len().saturating_sub(trimmed.len());
     let mut styled_base = base_style;
@@ -414,14 +406,12 @@ fn render_markdown_segment_with_cursor(
 
     let text = &segment[indent_len..];
     let mut cursor = 0usize;
-    let mut char_cursor = indent_len;
     while cursor < text.len() {
         let rest = &text[cursor..];
 
         if let Some(content) = rest.strip_prefix("`") {
             if let Some(end) = content.find('`') {
                 let token = &rest[..end + 2];
-                char_cursor += token.chars().count();
                 out.push(Span::styled(
                     token.to_string(),
                     styled_base.bg(Color::DarkGray).fg(Color::White),
@@ -434,24 +424,12 @@ fn render_markdown_segment_with_cursor(
         if let Some(content) = rest.strip_prefix("[[") {
             if let Some(end) = content.find("]]") {
                 let token = &rest[..end + 4];
-                let label = wikilink_display_label(token);
-                let token_len = token.chars().count();
-                let start_char = char_cursor;
-                let end_char = char_cursor + token_len;
-                let hovered = cursor_char
-                    .map(|col| col >= start_char && col < end_char)
-                    .unwrap_or(false);
-                if hovered {
-                    out.push(Span::styled(token.to_string(), styled_base));
-                } else {
-                    out.push(Span::styled(
-                        label,
-                        styled_base
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::UNDERLINED),
-                    ));
-                }
-                char_cursor = end_char;
+                out.push(Span::styled(
+                    token.to_string(),
+                    styled_base
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::UNDERLINED),
+                ));
                 cursor += end + 4;
                 continue;
             }
@@ -469,7 +447,6 @@ fn render_markdown_segment_with_cursor(
         let plain = &rest[..next];
         if !plain.is_empty() {
             out.push(Span::styled(plain.to_string(), styled_base));
-            char_cursor += plain.chars().count();
         }
         cursor += next.max(1);
     }
@@ -486,23 +463,4 @@ fn apply_overlay_style(spans: Vec<Span<'static>>, overlay: Style) -> Vec<Span<'s
         .into_iter()
         .map(|span| Span::styled(span.content, span.style.patch(overlay)))
         .collect()
-}
-
-fn wikilink_display_label(token: &str) -> String {
-    let inner = token
-        .strip_prefix("[[")
-        .and_then(|s| s.strip_suffix("]]"))
-        .unwrap_or(token)
-        .trim();
-    if inner.is_empty() {
-        return token.to_string();
-    }
-    if let Some((name, alias)) = inner.split_once('|') {
-        let alias = alias.trim();
-        if !alias.is_empty() {
-            return alias.to_string();
-        }
-        return name.trim().to_string();
-    }
-    inner.to_string()
 }

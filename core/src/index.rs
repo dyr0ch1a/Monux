@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition, TableError};
 
 const NOTES_BY_ID: TableDefinition<u64, &str> = TableDefinition::new("notes_by_id");
 const TITLES_BY_ID: TableDefinition<u64, &str> = TableDefinition::new("titles_by_id");
@@ -162,7 +162,11 @@ impl NoteIndex {
 
     pub fn list_tags(&self, note_id: u64) -> anyhow::Result<Vec<String>> {
         let read_txn = self.db.begin_read()?;
-        let table = read_txn.open_table(TAGS_BY_ID)?;
+        let table = match read_txn.open_table(TAGS_BY_ID) {
+            Ok(table) => table,
+            Err(TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
         let raw = table
             .get(&note_id)?
             .map(|value| value.value().to_string())
@@ -233,6 +237,11 @@ impl NoteIndex {
     fn init_meta(&self) -> anyhow::Result<()> {
         let write_txn = self.db.begin_write()?;
         {
+            // Schema migration guard for old DB files.
+            let _ = write_txn.open_table(NOTES_BY_ID)?;
+            let _ = write_txn.open_table(TITLES_BY_ID)?;
+            let _ = write_txn.open_table(SLUG_TO_ID)?;
+            let _ = write_txn.open_table(TAGS_BY_ID)?;
             let mut meta = write_txn.open_table(META)?;
             if meta.get("next_id")?.is_none() {
                 meta.insert("next_id", &1)?;
