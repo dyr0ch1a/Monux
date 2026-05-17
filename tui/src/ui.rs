@@ -283,7 +283,7 @@ fn draw_notes(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let mut state = ListState::default();
-    if !app.notes.is_empty() {
+    if app.notes_tree_len() > 0 {
         state.select(Some(app.selected_note));
     }
 

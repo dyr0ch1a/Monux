@@ -15,6 +15,19 @@ pub struct NoteMeta {
     pub title: String,
 }
 
+fn normalize_note_key(raw: &str) -> String {
+    let unified = raw.trim().replace('\\', "/");
+    let no_ext = unified.strip_suffix(".md").unwrap_or(&unified);
+    let parts = no_ext
+        .split('/')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(slugify)
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>();
+    parts.join("/")
+}
+
 pub struct NoteIndex {
     db: Database,
 }
@@ -37,7 +50,7 @@ impl NoteIndex {
             anyhow::bail!("note name cannot be empty");
         }
 
-        let slug = slugify(title);
+        let slug = normalize_note_key(title);
         if slug.is_empty() {
             anyhow::bail!("failed to build note slug from name");
         }
@@ -153,7 +166,7 @@ impl NoteIndex {
     }
 
     pub fn add_tags_to_slug(&self, slug: &str, tags: &[String]) -> anyhow::Result<Vec<String>> {
-        let normalized = normalize_slug(slug);
+        let normalized = normalize_note_key(slug);
         let id = self
             .id_by_slug(&normalized)?
             .ok_or_else(|| anyhow::anyhow!("note '{}' not found", normalized))?;
@@ -175,7 +188,7 @@ impl NoteIndex {
     }
 
     pub fn list_tags_by_slug(&self, slug: &str) -> anyhow::Result<Vec<String>> {
-        let normalized = normalize_slug(slug);
+        let normalized = normalize_note_key(slug);
         let id = self
             .id_by_slug(&normalized)?
             .ok_or_else(|| anyhow::anyhow!("note '{}' not found", normalized))?;
@@ -183,7 +196,7 @@ impl NoteIndex {
     }
 
     pub fn get_by_slug(&self, raw_slug: &str) -> anyhow::Result<Option<NoteMeta>> {
-        let slug = normalize_slug(raw_slug);
+        let slug = normalize_note_key(raw_slug);
         if slug.is_empty() {
             return Ok(None);
         }
@@ -234,6 +247,47 @@ impl NoteIndex {
         Ok(())
     }
 
+    pub fn rename(&self, old_slug: &str, new_name: &str) -> anyhow::Result<NoteMeta> {
+        let current = self
+            .get_by_slug(old_slug)?
+            .ok_or_else(|| anyhow::anyhow!("note '{}' not found", normalize_note_key(old_slug)))?;
+
+        let title = new_name.trim();
+        if title.is_empty() {
+            anyhow::bail!("new note name cannot be empty");
+        }
+
+        let new_slug = normalize_note_key(title);
+        if new_slug.is_empty() {
+            anyhow::bail!("failed to build note slug from new name");
+        }
+
+        if new_slug != current.slug {
+            if self.get_by_slug(&new_slug)?.is_some() {
+                anyhow::bail!("note '{}' already exists", new_slug);
+            }
+        }
+
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut notes = write_txn.open_table(NOTES_BY_ID)?;
+            let mut titles = write_txn.open_table(TITLES_BY_ID)?;
+            let mut slug_to_id = write_txn.open_table(SLUG_TO_ID)?;
+
+            notes.insert(&current.id, new_slug.as_str())?;
+            titles.insert(&current.id, title)?;
+            slug_to_id.remove(current.slug.as_str())?;
+            slug_to_id.insert(new_slug.as_str(), &current.id)?;
+        }
+        write_txn.commit()?;
+
+        Ok(NoteMeta {
+            id: current.id,
+            slug: new_slug,
+            title: title.to_string(),
+        })
+    }
+
     fn init_meta(&self) -> anyhow::Result<()> {
         let write_txn = self.db.begin_write()?;
         {
@@ -268,15 +322,21 @@ pub fn normalize_slug(raw: &str) -> String {
         return String::new();
     }
     let raw = raw.split_once('|').map(|(target, _)| target).unwrap_or(raw);
+    normalize_note_key(raw)
+}
 
-    let last_component = std::path::Path::new(raw)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or(raw);
+pub fn note_slug_with_dir(dir: Option<&str>, name: &str) -> String {
+    let name_slug = normalize_note_key(name);
+    if name_slug.is_empty() {
+        return String::new();
+    }
 
-    let no_ext = last_component.strip_suffix(".md").unwrap_or(last_component);
-
-    slugify(no_ext)
+    let dir_slug = dir.map(normalize_note_key).unwrap_or_default();
+    if dir_slug.is_empty() {
+        name_slug
+    } else {
+        format!("{dir_slug}/{name_slug}")
+    }
 }
 
 fn slugify(input: &str) -> String {
@@ -351,4 +411,74 @@ fn decode_tags(raw: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(ToString::to_string)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db_path(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("monux-{name}-{nanos}.redb"))
+    }
+
+    #[test]
+    fn normalize_slug_handles_links_paths_and_ext() {
+        assert_eq!(normalize_slug("Some Note"), "some-note");
+        assert_eq!(normalize_slug("folder/Some Note.md"), "folder/some-note");
+        assert_eq!(normalize_slug("[[Some Note|Alias]]"), "some-note");
+    }
+
+    #[test]
+    fn parse_tags_normalizes_and_deduplicates() {
+        let tags = parse_tags_input(" Rust, rust  CLI #ignored cli ");
+        assert_eq!(tags, vec!["rust", "cli", "ignored"]);
+    }
+
+    #[test]
+    fn create_find_tags_delete_workflow() -> anyhow::Result<()> {
+        let path = temp_db_path("workflow");
+        let index = NoteIndex::open(path.clone())?;
+
+        let first = index.create_note_with_tags("First Note", &["rust".to_string()])?;
+        let second = index.create_note("Second Note")?;
+
+        let found = index.find("first")?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].id, first.id);
+
+        let by_tag = index.find_by_tag("rust")?;
+        assert_eq!(by_tag.len(), 1);
+        assert_eq!(by_tag[0].id, first.id);
+
+        index.delete(first.id)?;
+        assert!(index.get_by_slug("first-note")?.is_none());
+        assert!(index.get_by_slug("second-note")?.is_some());
+        assert_eq!(index.list()?.len(), 1);
+        assert_eq!(index.list()?[0].id, second.id);
+
+        let _ = std::fs::remove_file(path);
+        Ok(())
+    }
+
+    #[test]
+    fn rename_updates_slug_and_title() -> anyhow::Result<()> {
+        let path = temp_db_path("rename");
+        let index = NoteIndex::open(path.clone())?;
+
+        let created = index.create_note("Old Name")?;
+        let renamed = index.rename("old-name", "New Name")?;
+
+        assert_eq!(renamed.id, created.id);
+        assert_eq!(renamed.slug, "new-name");
+        assert_eq!(renamed.title, "New Name");
+        assert!(index.get_by_slug("old-name")?.is_none());
+        assert!(index.get_by_slug("new-name")?.is_some());
+
+        let _ = std::fs::remove_file(path);
+        Ok(())
+    }
 }

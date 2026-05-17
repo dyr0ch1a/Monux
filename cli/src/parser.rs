@@ -16,14 +16,35 @@ pub enum Commands {
         name: Option<String>,
         #[arg(short, long)]
         tags: Option<String>,
+        #[arg(long)]
+        dir: Option<String>,
     },
-    List,
+    List {
+        #[arg(long)]
+        dir: Option<String>,
+    },
     Find {
         query: String,
         #[arg(short, long)]
         tag: Option<String>,
+        #[arg(short = 'c', long = "content")]
+        content: bool,
+        #[arg(long)]
+        dir: Option<String>,
     },
-    Delete { query: String },
+    Delete {
+        query: String,
+        #[arg(short = 'y', long = "yes")]
+        yes: bool,
+    },
+    Rename {
+        old: String,
+        new: String,
+    },
+    Sync {
+        #[arg(long)]
+        dir: Option<String>,
+    },
     Edit { path: Option<String> },
     Tags {
         #[command(subcommand)]
