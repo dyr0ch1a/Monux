@@ -1,4 +1,4 @@
-use core::index::{note_path, note_slug_with_dir, parse_tags_input};
+use monux_core::index::{note_path, note_slug_with_dir, parse_tags_input};
 
 use crate::commands::context::CommandContext;
 

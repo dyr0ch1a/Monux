@@ -1,4 +1,4 @@
-use core::index::note_slug_with_dir;
+use monux_core::index::note_slug_with_dir;
 
 use crate::commands::context::CommandContext;
 

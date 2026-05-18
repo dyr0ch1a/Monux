@@ -1,4 +1,4 @@
-use core::index::note_path;
+use monux_core::index::note_path;
 
 use crate::commands::context::CommandContext;
 

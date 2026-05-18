@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
-use core::editor::{Editor, Event, FsStorage};
-use core::index::{normalize_slug, note_path};
+use monux_core::editor::{Editor, Event, FsStorage};
+use monux_core::index::{normalize_slug, note_path};
 
 use crate::commands::context::CommandContext;
 

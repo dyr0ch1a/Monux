@@ -1,6 +1,6 @@
-use core::context::StorageContext;
-use core::fsstorage::config::Config;
-use core::index::NoteIndex;
+use monux_core::context::StorageContext;
+use monux_core::fsstorage::config::Config;
+use monux_core::index::NoteIndex;
 
 pub struct CommandContext {
     storage: StorageContext,

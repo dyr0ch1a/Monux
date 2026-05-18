@@ -114,22 +114,29 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
 
 fn draw_new_note_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect(area, 60, 8);
-    let name_label = if app.new_note_tags_focused {
-        "Name:"
+    let dir_label = if app.new_note_field == crate::app::NewNoteField::Dir {
+        "Folder: <-"
     } else {
-        "Name: <-"
+        "Folder:"
     };
-    let tags_label = if app.new_note_tags_focused {
+    let name_label = if app.new_note_field == crate::app::NewNoteField::Name {
+        "Name: <-"
+    } else {
+        "Name:"
+    };
+    let tags_label = if app.new_note_field == crate::app::NewNoteField::Tags {
         "Tags (comma/space separated): <-"
     } else {
         "Tags (comma/space separated):"
     };
     let text = Text::from(vec![
+        Line::from(dir_label),
+        Line::from(app.new_note_dir_input.as_str()),
+        Line::from(""),
         Line::from(name_label),
         Line::from(app.new_note_input.as_str()),
         Line::from(tags_label),
         Line::from(app.new_note_tags_input.as_str()),
-        Line::from(""),
         Line::styled(
             "Tab: switch field, Enter: create, Esc: cancel",
             Style::default().add_modifier(Modifier::DIM),
@@ -155,6 +162,7 @@ fn draw_help_popup(frame: &mut Frame, area: Rect) {
         Line::from("  Ctrl+S: save"),
         Line::from("  Tab / Shift+Tab: cycle panes"),
         Line::from("  : open command"),
+        Line::from("  z: fold/unfold current heading in preview"),
         Line::from("  Notes focus + Shift+D: delete note"),
         Line::from("  :del <title>: delete note by title"),
         Line::from("  :tags add <tags...>: add tags to current note"),
@@ -209,19 +217,38 @@ fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
             Style::default().add_modifier(Modifier::DIM),
         ));
     } else {
-        let cursor_row = app.cursor_row();
+        let cursor_row = app.preview_visible_row_for_source_row(app.cursor_row());
         let end = (scroll + inner_height).min(source_len);
+        let mut screen_row = 0usize;
+
         for idx in scroll..end {
+            if app.preview_is_row_hidden(idx) {
+                continue;
+            }
+
             let Some(line) = app.preview_source_lines().get(idx).cloned() else {
                 continue;
             };
+
             let rel = idx.abs_diff(cursor_row);
             let gutter = format!("{:>4} ", rel);
+
             let mut spans = vec![Span::styled(
                 gutter,
                 Style::default().add_modifier(Modifier::DIM),
             )];
-            let base_style = Style::default();
+
+            if app.preview_is_heading_row(idx) {
+                let marker = if app.preview_heading_is_collapsed(idx) {
+                    "▸ "
+                } else {
+                    "▾ "
+                };
+                spans.push(Span::styled(
+                    marker,
+                    Style::default().add_modifier(Modifier::DIM),
+                ));
+            }
 
             if let Some((sel_start, sel_end)) =
                 app.visual_selection_for_row(idx, line.chars().count())
@@ -231,34 +258,24 @@ fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
                 let after = slice_chars(&line, sel_end, line.chars().count());
 
                 if !before.is_empty() {
-                    spans.extend(render_markdown_segment(&before, base_style));
+                    spans.extend(render_markdown_segment(&before, Style::default()));
                 }
                 if !selected.is_empty() {
-                    let selected_spans = render_markdown_segment(&selected, base_style);
+                    let selected_spans = render_markdown_segment(&selected, Style::default());
                     spans.extend(apply_overlay_style(
                         selected_spans,
                         Style::default().bg(Color::White).fg(Color::Black),
                     ));
                 }
                 if !after.is_empty() {
-                    spans.extend(render_markdown_segment(&after, base_style));
-                }
-                if spans.len() == 1 {
-                    spans.push(Span::styled(String::new(), base_style));
+                    spans.extend(render_markdown_segment(&after, Style::default()));
                 }
             } else {
-                if idx == cursor_row {
-                    spans.extend(render_markdown_segment_with_cursor(&line, base_style));
-                } else {
-                    if let Some(cached) = app.prerendered_preview_line(idx) {
-                        spans.extend(cached);
-                    } else {
-                        spans.extend(render_markdown_segment_with_cursor(&line, base_style));
-                    }
-                }
+                spans.extend(render_markdown_segment_with_cursor(&line, Style::default()));
             }
 
             rendered.push(Line::from(spans));
+            screen_row += 1;
         }
     }
 
@@ -267,6 +284,7 @@ fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
         ""
     };
+
     let paragraph = Paragraph::new(Text::from(rendered))
         .block(panel_block(preview_title, app.focus == FocusPane::Preview))
         .wrap(Wrap { trim: false });
@@ -321,18 +339,23 @@ fn place_editor_cursor(frame: &mut Frame, app: &App, area: Rect) {
     }
 
     let scroll = app.editor_scroll as usize;
-    let row = app.cursor_row();
+    let row = app.preview_visible_row_for_source_row(app.cursor_row());
     if row < scroll {
         return;
     }
 
-    let visual_row = (row - scroll) as u16;
+    let visual_row = app.preview_screen_row_for_source_row(scroll, row) as u16;
     if visual_row >= inner_height {
         return;
     }
 
     let gutter_width: u16 = 5;
-    let col = app.cursor_col() as u16;
+    let col = app.cursor_col() as u16
+        + if app.preview_is_heading_row(row) {
+            2
+        } else {
+            0
+        };
     let max_col = inner_width.saturating_sub(1).saturating_sub(gutter_width);
     let visual_col = col.min(max_col);
 
@@ -342,11 +365,15 @@ fn place_editor_cursor(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn place_new_note_cursor(frame: &mut Frame, app: &App, area: Rect) {
-    let popup = centered_rect(area, 60, 8);
-    let (input_width, y) = if app.new_note_tags_focused {
-        (app.new_note_tags_input.chars().count() as u16, popup.y + 4)
-    } else {
-        (app.new_note_input.chars().count() as u16, popup.y + 2)
+    let popup = centered_rect(area, 60, 9);
+    let (input_width, y) = match app.new_note_field {
+        crate::app::NewNoteField::Dir => {
+            (app.new_note_dir_input.chars().count() as u16, popup.y + 2)
+        }
+        crate::app::NewNoteField::Name => (app.new_note_input.chars().count() as u16, popup.y + 5),
+        crate::app::NewNoteField::Tags => {
+            (app.new_note_tags_input.chars().count() as u16, popup.y + 7)
+        }
     };
     let max_x = popup.x + popup.width.saturating_sub(2);
     let x = (popup.x + 1 + input_width).min(max_x);

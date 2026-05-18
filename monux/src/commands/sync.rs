@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use core::fsstorage::list::Notes;
-use core::index::normalize_slug;
+use monux_core::fsstorage::list::Notes;
+use monux_core::index::normalize_slug;
 
 use crate::commands::context::CommandContext;
 

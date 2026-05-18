@@ -1,9 +1,9 @@
 [workspace]
 resolver = "3"
 members = [
-  "core",
-  "cli",
-  "tui"
+  "monux_core",
+  "monux",
+  "monux_tui"
 ]
 
 

@@ -1,4 +1,4 @@
-use core::index::parse_tags_input;
+use monux_core::index::parse_tags_input;
 
 use crate::commands::context::CommandContext;
 

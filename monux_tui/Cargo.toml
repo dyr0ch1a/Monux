@@ -1,5 +1,5 @@
 [package]
-name = "tui"
+name = "monux_tui"
 version = "0.0.1"
 edition = "2024"
 
@@ -7,4 +7,5 @@ edition = "2024"
 anyhow = "1.0.102"
 crossterm = "0.29.0"
 ratatui = "0.30.0"
-core = { path = "../core" }
+pulldown-cmark = "0.13.0"
+monux_core = { path = "../monux_core" }

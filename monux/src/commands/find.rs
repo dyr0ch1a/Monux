@@ -1,10 +1,15 @@
 use std::io::ErrorKind;
 
-use core::index::{note_path, note_slug_with_dir};
+use monux_core::index::{note_path, note_slug_with_dir};
 
 use crate::commands::context::CommandContext;
 
-pub fn run(query: String, tag: Option<String>, content: bool, dir: Option<String>) -> anyhow::Result<()> {
+pub fn run(
+    query: String,
+    tag: Option<String>,
+    content: bool,
+    dir: Option<String>,
+) -> anyhow::Result<()> {
     let ctx = CommandContext::new()?;
     let config = ctx.load_config()?;
     let index = ctx.open_note_index()?;

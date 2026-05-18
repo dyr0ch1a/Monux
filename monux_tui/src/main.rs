@@ -1,5 +1,5 @@
 use crossterm::{
-    event::{self, Event},
+    event::{self, Event, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -38,7 +38,9 @@ fn run(
         terminal.draw(|f| ui::draw(f, app))?;
 
         if let Event::Key(key) = event::read()? {
-            app.on_key(key)?;
+            if matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+                app.on_key(key)?;
+            }
         }
     }
 
