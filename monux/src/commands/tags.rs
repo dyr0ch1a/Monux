@@ -1,4 +1,4 @@
-use monux_core::index::parse_tags_input;
+use monux_core::index::{parse_tags_input, resolve_note_path};
 
 use crate::commands::context::CommandContext;
 
@@ -10,20 +10,28 @@ pub fn add(note: String, tags: String) -> anyhow::Result<()> {
         anyhow::bail!("tags are empty");
     }
 
-    let merged = index.add_tags_to_slug(&note, &parsed)?;
-    println!("{}\t#{}", note, merged.join(" #"));
+    let rel = resolve_note_path(&note);
+    if rel.as_os_str().is_empty() {
+        anyhow::bail!("note path is invalid");
+    }
+    let merged = index.add_tags(&rel, &parsed)?;
+    println!("{}\t#{}", rel.display(), merged.join(" #"));
     Ok(())
 }
 
 pub fn list(note: String) -> anyhow::Result<()> {
     let ctx = CommandContext::new()?;
     let index = ctx.open_note_index()?;
-    let tags = index.list_tags_by_slug(&note)?;
+    let rel = resolve_note_path(&note);
+    if rel.as_os_str().is_empty() {
+        anyhow::bail!("note path is invalid");
+    }
+    let tags = index.list_tags(&rel)?;
 
     if tags.is_empty() {
-        println!("{} has no tags", note);
+        println!("{} has no tags", rel.display());
     } else {
-        println!("{}\t#{}", note, tags.join(" #"));
+        println!("{}\t#{}", rel.display(), tags.join(" #"));
     }
     Ok(())
 }

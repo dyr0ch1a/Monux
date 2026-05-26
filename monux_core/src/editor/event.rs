@@ -3,3 +3,5 @@ pub enum Event {
     Line(String),
     Message(String),
 }
+
+

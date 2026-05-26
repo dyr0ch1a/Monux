@@ -9,3 +9,4 @@ crossterm = "0.29.0"
 ratatui = "0.30.0"
 pulldown-cmark = "0.13.0"
 monux_core = { path = "../monux_core" }
+walkdir = "2.5.0"

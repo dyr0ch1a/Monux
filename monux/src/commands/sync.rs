@@ -1,65 +1,39 @@
-use std::collections::HashSet;
+use monux_core::index::path_in_dir;
 
-use monux_core::fsstorage::list::Notes;
-use monux_core::index::normalize_slug;
 
 use crate::commands::context::CommandContext;
 
+
 pub fn run(dir: Option<String>) -> anyhow::Result<()> {
     let ctx = CommandContext::new()?;
-    let config = ctx.load_config()?;
     let index = ctx.open_note_index()?;
+    let storage = ctx.open_note_storage()?;
+    let notes = storage.list_note_paths()?;
+    for rel in &notes {
+        index.reindex_note(rel)?;
+    }
+    let scanned = notes.len();
 
-    let listed = Notes::new(config.notes_dir.clone()).list()?;
-    let mut file_slugs = HashSet::new();
-    let mut created = 0usize;
-    let mut skipped = 0usize;
 
-    for file in listed {
-        let Ok(rel) = file.strip_prefix(&config.notes_dir) else {
-            skipped += 1;
-            continue;
-        };
+    let removed = index.prune_orphan_tags()?;
 
-        let rel_no_ext = rel.with_extension("");
-        let rel_str = rel_no_ext.to_string_lossy().replace('\\', "/");
-        let slug = normalize_slug(&rel_str);
-        if slug.is_empty() {
-            skipped += 1;
-            continue;
-        }
 
-        if let Some(dir_filter) = dir.as_deref() {
-            let prefix = normalize_slug(dir_filter);
-            if !prefix.is_empty() && !slug.starts_with(&prefix) {
-                continue;
-            }
-        }
-
-        file_slugs.insert(slug.clone());
-
-        if index.get_by_slug(&slug)?.is_none() {
-            index.create_note(&slug)?;
-            created += 1;
-        }
+    if let Some(dir_filter) = dir.as_deref() {
+        let count = index
+            .list()?
+            .into_iter()
+            .filter(|note| path_in_dir(&note.path, dir_filter))
+            .count();
+        println!("Sync
+done\tnotes={count}\tscanned={scanned}\torphan_tags_removed={removed}");
+    } else {
+        let count = index.list()?.len();
+        println!("Sync
+done\tnotes={count}\tscanned={scanned}\torphan_tags_removed={removed}");
     }
 
-    let notes = index.list()?;
-    let mut removed = 0usize;
-    for note in notes {
-        if let Some(dir_filter) = dir.as_deref() {
-            let prefix = normalize_slug(dir_filter);
-            if !prefix.is_empty() && !note.slug.starts_with(&prefix) {
-                continue;
-            }
-        }
 
-        if !file_slugs.contains(&note.slug) {
-            index.delete(note.id)?;
-            removed += 1;
-        }
-    }
-
-    println!("Sync done\tcreated={created}\tremoved={removed}\tskipped={skipped}");
     Ok(())
 }
+
+

@@ -1,32 +1,39 @@
 use std::io::{self, Write};
 
+
 use monux_core::editor::{Editor, Event, FsStorage};
-use monux_core::index::{normalize_slug, note_path};
+use monux_core::index::abs_note_path;
 
-use crate::commands::context::CommandContext;
 
-pub fn run(slug: Option<String>) -> anyhow::Result<()> {
+use crate::commands::context::{resolve_note_reference,
+CommandContext};
+
+
+pub fn run(path: Option<String>) -> anyhow::Result<()> {
     let mut editor = Editor::new(FsStorage);
 
-    if let Some(slug) = slug {
+
+    if let Some(path) = path {
         let ctx = CommandContext::new()?;
         let config = ctx.load_config()?;
         let index = ctx.open_note_index()?;
 
-        let normalized = normalize_slug(&slug);
-        let note = index
-            .get_by_slug(&normalized)?
-            .ok_or_else(|| anyhow::anyhow!("note '{}' not found in index", normalized))?;
 
-        let file_path = note_path(&config.notes_dir, &note.slug);
+        let note = resolve_note_reference(&index, &path)?;
+
+
+        let file_path = abs_note_path(&config.notes_dir, &note.path);
         if !file_path.exists() {
             std::fs::File::create(&file_path)?;
         }
 
-        let outcome = editor.execute(&format!("e {}", file_path.display()))?;
+
+        let outcome = editor.execute(&format!("e {}",
+file_path.display()))?;
         print_events(&outcome.events);
-        println!("editing\t{}\t{}", note.id, note.slug);
+        println!("editing\t{}", note.title);
     }
+
 
     let stdin = io::stdin();
     loop {
@@ -37,11 +44,13 @@ pub fn run(slug: Option<String>) -> anyhow::Result<()> {
         }
         io::stdout().flush()?;
 
+
         let mut line = String::new();
         let read = stdin.read_line(&mut line)?;
         if read == 0 {
             break;
         }
+
 
         let line = line.trim_end_matches(['\n', '\r']);
         match editor.execute(line) {
@@ -57,8 +66,10 @@ pub fn run(slug: Option<String>) -> anyhow::Result<()> {
         }
     }
 
+
     Ok(())
 }
+
 
 fn print_events(events: &[Event]) {
     for event in events {
@@ -68,3 +79,5 @@ fn print_events(events: &[Event]) {
         }
     }
 }
+
+

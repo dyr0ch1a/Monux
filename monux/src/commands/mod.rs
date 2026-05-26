@@ -6,6 +6,8 @@ pub mod init;
 pub mod list;
 pub mod new;
 pub mod rename;
+pub mod rename_dir;
 pub mod sync;
-pub mod tags;
+pub mod tui;
 pub mod version;
+

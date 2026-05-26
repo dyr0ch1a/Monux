@@ -1,5 +1,6 @@
 use crate::editor::error::EditorError;
 
+
 #[derive(Debug, Clone, Copy)]
 pub enum Addr {
     Current,
@@ -7,11 +8,13 @@ pub enum Addr {
     Absolute(usize),
 }
 
+
 #[derive(Debug, Clone, Copy)]
 pub struct AddressRange {
     pub start: Addr,
     pub end: Addr,
 }
+
 
 impl AddressRange {
     pub fn single(addr: Addr) -> Self {
@@ -22,10 +25,13 @@ impl AddressRange {
     }
 }
 
-pub fn parse_address_range(input: &str) -> Result<Option<(AddressRange, usize)>, EditorError> {
+
+pub fn parse_address_range(input: &str) ->
+Result<Option<(AddressRange, usize)>, EditorError> {
     if input.is_empty() {
         return Ok(None);
     }
+
 
     if input.starts_with('%') {
         return Ok(Some((
@@ -37,17 +43,21 @@ pub fn parse_address_range(input: &str) -> Result<Option<(AddressRange, usize)>,
         )));
     }
 
+
     let (first, first_len) = parse_addr(input)?;
     let Some(first) = first else {
         return Ok(None);
     };
 
+
     let rest = &input[first_len..];
     if let Some(stripped) = rest.strip_prefix(',') {
         let (second, second_len) = parse_addr(stripped)?;
         let Some(second) = second else {
-            return Err(EditorError::InvalidAddress(input.to_string()));
+            return
+Err(EditorError::InvalidAddress(input.to_string()));
         };
+
 
         return Ok(Some((
             AddressRange {
@@ -58,14 +68,18 @@ pub fn parse_address_range(input: &str) -> Result<Option<(AddressRange, usize)>,
         )));
     }
 
+
     Ok(Some((AddressRange::single(first), first_len)))
 }
 
-fn parse_addr(input: &str) -> Result<(Option<Addr>, usize), EditorError> {
+
+fn parse_addr(input: &str) -> Result<(Option<Addr>, usize),
+EditorError> {
     let mut chars = input.chars();
     let Some(ch) = chars.next() else {
         return Ok((None, 0));
     };
+
 
     match ch {
         '.' => Ok((Some(Addr::Current), 1)),
@@ -80,12 +94,17 @@ fn parse_addr(input: &str) -> Result<(Option<Addr>, usize), EditorError> {
                 }
             }
 
+
             let number = input[..len]
                 .parse::<usize>()
-                .map_err(|_| EditorError::InvalidAddress(input.to_string()))?;
+                .map_err(|_|
+EditorError::InvalidAddress(input.to_string()))?;
+
 
             Ok((Some(Addr::Absolute(number)), len))
         }
         _ => Ok((None, 0)),
     }
 }
+
+
