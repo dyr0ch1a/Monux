@@ -54,8 +54,9 @@ fn render_with_prefix(
                 let next = match tag {
                     Tag::Emphasis =>
 current.add_modifier(Modifier::ITALIC),
-                    Tag::Strong =>
-current.add_modifier(Modifier::BOLD),
+                    Tag::Strong => current
+                        .fg(Color::White)
+                        .add_modifier(Modifier::BOLD),
                     Tag::Strikethrough =>
 current.add_modifier(Modifier::CROSSED_OUT),
                     Tag::CodeBlock(_) =>
@@ -464,5 +465,23 @@ base.add_modifier(Modifier::BOLD).fg(Color::Cyan),
         HeadingLevel::H3 => base.add_modifier(Modifier::UNDERLINED),
         HeadingLevel::H4 | HeadingLevel::H5 | HeadingLevel::H6 =>
 base.add_modifier(Modifier::DIM),
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strong_text_gets_a_brighter_style() {
+        let spans = render_markdown_segment("plain **bold** text", Style::default().fg(Color::DarkGray));
+        let bold_span = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "bold")
+            .expect("expected bold span");
+
+        assert_eq!(bold_span.style.fg, Some(Color::White));
+        assert!(bold_span.style.add_modifier.contains(Modifier::BOLD));
     }
 }

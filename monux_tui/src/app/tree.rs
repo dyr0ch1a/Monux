@@ -144,14 +144,18 @@ directory".to_string();
         let paths = std::mem::take(&mut self.notes_tree_cut_paths);
         let mut moved = 0usize;
         let mut failed = Vec::new();
+        let mut last_error: Option<String> = None;
         for rel in &paths {
             let Some(note) = self.notes.iter().find(|n| n.path ==
 *rel).cloned() else {
                 continue;
             };
-            self.move_note_to_dir(note, &target_dir)?;
-            // move_note_to_dir uses status-only early returns for some cases.
-            // Count successful moves only when source path disappeared.
+            if let Err(err) = self.move_note_to_dir(note, &target_dir) {
+                last_error = Some(err.to_string());
+                let _ = self.reload_notes();
+            }
+
+            // Count successful moves only when the source path disappeared.
             let moved_away = self.notes.iter().all(|n| n.path != *rel);
             if moved_away {
                 moved += 1;
@@ -164,10 +168,16 @@ directory".to_string();
         if self.notes_tree_cut_paths.is_empty() {
             self.status = format!("moved {moved} note(s) to {target}");
         } else {
-            self.status = format!(
-                "moved {moved} note(s) to {target}, {} not moved",
-                self.notes_tree_cut_paths.len()
-            );
+            self.status = match last_error {
+                Some(err) => format!(
+                    "moved {moved} note(s) to {target}, {} not moved: {err}",
+                    self.notes_tree_cut_paths.len()
+                ),
+                None => format!(
+                    "moved {moved} note(s) to {target}, {} not moved",
+                    self.notes_tree_cut_paths.len()
+                ),
+            };
         }
         Ok(())
     }
