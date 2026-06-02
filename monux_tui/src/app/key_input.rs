@@ -118,14 +118,6 @@ self.notes_tree_visual_mode {
                     return Ok(());
                 }
             }
-            KeyCode::Char('q') => {
-                if self.dirty {
-                    self.status = "unsaved changes; use :q! to discard
-or :w".to_string();
-                } else {
-                    self.should_quit = true;
-                }
-            }
             KeyCode::Tab => {
                 self.cycle_focus(true);
             }
@@ -494,13 +486,13 @@ anyhow::Result<()> {
                 self.global_search_input.pop();
                 self.refresh_global_search_results()?;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 if self.global_search_selected + 1 <
 self.global_search_results.len() {
                     self.global_search_selected += 1;
                 }
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 self.global_search_selected =
 self.global_search_selected.saturating_sub(1);
             }
