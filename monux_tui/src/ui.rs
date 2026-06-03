@@ -251,7 +251,7 @@ Style::default().fg(kind_color).add_modifier(Modifier::BOLD),
     }
     lines.push(Line::from(""));
     lines.push(Line::styled(
-        "Enter: open, Up/Down: move, Esc: close",
+        "Enter: open, j/k: move, Esc: close",
         Style::default().add_modifier(Modifier::DIM),
     ));
 
@@ -330,11 +330,10 @@ Style::default().add_modifier(Modifier::BOLD)),
         Line::from("  Tab / Shift+Tab: cycle focus panes"),
         Line::from("  Ctrl+N: create note (dir + name + tags)"),
         Line::from("  Ctrl+F: open global search popup"),
-        Line::from("  Global search: Up/Down to move selection"),
         Line::from("  Ctrl+D: create directory popup"),
         Line::from("  Ctrl+R: rename selected item/current note"),
         Line::from("  Ctrl+S: save current note"),
-        Line::from("  q: no-op in normal mode, use :q / :q!"),
+        Line::from("  q: quit (when no unsaved changes)"),
         Line::from(""),
         Line::styled("Notes Pane",
 Style::default().add_modifier(Modifier::BOLD)),
@@ -883,3 +882,5 @@ fn is_fence_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     trimmed.starts_with("```")
 }
+
+
