@@ -2,16 +2,12 @@ use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
 
 use monux_core::context::StorageContext;
 use monux_core::fsstorage::storage::NoteStorage;
 use monux_core::fsstorage::watch::VaultWatcher;
-use monux_core::index::{parse_tags_input, path_key, NoteIndex,
-NoteMeta};
-
+use monux_core::index::{NoteIndex, NoteMeta, parse_tags_input, path_key};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {
@@ -20,7 +16,6 @@ pub enum FocusPane {
     Notes,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorMode {
     Normal,
@@ -28,14 +23,12 @@ pub enum EditorMode {
     Visual,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewNoteField {
     Dir,
     Name,
     Tags,
 }
-
 
 #[derive(Clone)]
 struct UndoState {
@@ -45,13 +38,11 @@ struct UndoState {
     dirty: bool,
 }
 
-
 #[derive(Clone)]
 struct YankRegister {
     text: String,
     linewise: bool,
 }
-
 
 #[derive(Debug, Clone)]
 enum NotesTreeRow {
@@ -70,23 +61,17 @@ enum NotesTreeRow {
     },
 }
 
-
 #[derive(Debug, Clone)]
 pub enum GlobalSearchResult {
     Dir(String),
-    Note {
-        path: PathBuf,
-        matched_by_tag: bool,
-    },
+    Note { path: PathBuf, matched_by_tag: bool },
 }
-
 
 #[derive(Debug, Clone)]
 enum RenameTarget {
     Note(PathBuf),
     Dir(String),
 }
-
 
 pub struct App {
     pub should_quit: bool,
@@ -122,7 +107,6 @@ pub struct App {
     pub editor_lines: Vec<String>,
     pub editor_scroll: u16,
     pub current_note_rel: Option<PathBuf>,
-
 
     notes_root: PathBuf,
     autosave_enabled: bool,
@@ -163,7 +147,6 @@ pub struct App {
     notes_loaded: bool,
 }
 
-
 impl App {
     pub fn new() -> anyhow::Result<Self> {
         let storage = StorageContext::new()?;
@@ -176,7 +159,6 @@ impl App {
             .parent()
             .map(|p| p.join("tui_state.toml"))
             .unwrap_or_else(|| PathBuf::from("tui_state.toml"));
-
 
         let mut app = Self {
             should_quit: false,
@@ -253,7 +235,6 @@ impl App {
             notes_loaded: false,
         };
 
-
         app.expanded_dirs.insert(String::new());
         app.rebuild_notes_tree();
         if let Some(pos) = app
@@ -264,11 +245,9 @@ impl App {
             app.selected_note = pos;
         }
 
-
         Ok(app)
     }
 }
-
 
 impl App {
     pub fn load_notes_if_needed(&mut self) -> anyhow::Result<()> {
@@ -300,8 +279,7 @@ impl App {
 
         let mut reloaded = false;
         for abs in paths {
-            if abs.extension().and_then(|e| e.to_str()) != Some("md")
-{
+            if abs.extension().and_then(|e| e.to_str()) != Some("md") {
                 continue;
             }
             if let Ok(rel) = abs.strip_prefix(&self.notes_root) {
@@ -339,13 +317,13 @@ impl App {
     }
 
     fn should_ignore_watcher_event(&self, rel: &std::path::Path) -> bool {
-        let (Some(last_rel), Some(last_at)) = (&self.last_autosave_rel, self.last_autosave_at) else {
+        let (Some(last_rel), Some(last_at)) = (&self.last_autosave_rel, self.last_autosave_at)
+        else {
             return false;
         };
         rel == last_rel && Instant::now().duration_since(last_at) < Duration::from_millis(1200)
     }
 }
-
 
 include!("app/buffer.rs");
 include!("app/dirs.rs");
@@ -355,23 +333,18 @@ include!("app/editor.rs");
 include!("app/tree.rs");
 include!("app/preview_b.rs");
 
-
 fn split_lines(content: &str) -> Vec<String> {
     if content.is_empty() {
         return Vec::new();
     }
 
-
-    let mut lines: Vec<String> = content.split('\n').map(|line|
-line.to_string()).collect();
+    let mut lines: Vec<String> = content.split('\n').map(|line| line.to_string()).collect();
     if content.ends_with('\n') {
         lines.pop();
     }
 
-
     lines
 }
-
 
 fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
     s.char_indices()
@@ -380,11 +353,9 @@ fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
         .unwrap_or(s.len())
 }
 
-
 fn first_non_space_char_idx(line: &str) -> usize {
     line.chars().position(|ch| !ch.is_whitespace()).unwrap_or(0)
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharClass {
@@ -392,7 +363,6 @@ enum CharClass {
     Symbol,
     Whitespace,
 }
-
 
 fn char_class(ch: char) -> CharClass {
     if ch.is_whitespace() {
@@ -404,11 +374,9 @@ fn char_class(ch: char) -> CharClass {
     }
 }
 
-
 fn is_word_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
-
 
 fn prettify_segment(input: &str) -> String {
     let normalized = input
@@ -420,7 +388,6 @@ fn prettify_segment(input: &str) -> String {
     if normalized.is_empty() {
         return String::new();
     }
-
 
     let mut out = String::new();
     for (idx, word) in normalized.split_whitespace().enumerate() {
@@ -435,7 +402,6 @@ fn prettify_segment(input: &str) -> String {
     }
     out
 }
-
 
 fn display_name_from_note_path(path: &str) -> String {
     let leaf = path.rsplit('/').next().unwrap_or(path).trim();

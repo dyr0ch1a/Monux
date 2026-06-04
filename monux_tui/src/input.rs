@@ -9,7 +9,7 @@ pub enum Action {
 
 pub fn handle_key(key: KeyCode) -> Action {
     match key {
-        KeyCode::Char('q') => Action::Quit,
+        KeyCode::Char('q') => Action::None,
         KeyCode::Char('j') => Action::Down,
         KeyCode::Char('k') => Action::Up,
         _ => Action::None,

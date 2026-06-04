@@ -1,8 +1,6 @@
 use monux_core::index::{normalize_dir_path, path_in_dir, path_key};
 
-
 use crate::commands::context::CommandContext;
-
 
 pub fn run(
     dir: Option<String>,
@@ -14,7 +12,6 @@ pub fn run(
     let index = ctx.open_note_index()?;
     let storage = ctx.open_note_storage()?;
 
-
     let dir_filter = dir.as_deref();
     if show_dirs {
         let notes = index.list()?;
@@ -22,26 +19,22 @@ pub fn run(
         for note in notes {
             let mut current = note.path.parent();
             while let Some(parent) = current {
-                let normalized =
-normalize_dir_path(&path_key(parent));
+                let normalized = normalize_dir_path(&path_key(parent));
                 if !normalized.is_empty() {
                     dirs.insert(normalized);
                 }
                 current = parent.parent();
             }
         }
-        let filter =
-dir_filter.map(normalize_dir_path).unwrap_or_default();
+        let filter = dir_filter.map(normalize_dir_path).unwrap_or_default();
         for dir in dirs {
-            if !filter.is_empty() && dir != filter &&
-!dir.starts_with(&(filter.clone() + "/")) {
+            if !filter.is_empty() && dir != filter && !dir.starts_with(&(filter.clone() + "/")) {
                 continue;
             }
             println!("{dir}/");
         }
         return Ok(());
     }
-
 
     let notes = index.list()?;
     for note in notes {
@@ -54,8 +47,7 @@ dir_filter.map(normalize_dir_path).unwrap_or_default();
             let tags = storage.read_tags(&note.path)?;
             if tags.is_empty() {
                 if show_path {
-                    println!("{}\t{}", note.title,
-note.display_path());
+                    println!("{}\t{}", note.title, note.display_path());
                 } else {
                     println!("{}", note.title);
                 }
@@ -76,7 +68,5 @@ note.display_path());
         }
     }
 
-
     Ok(())
 }
-

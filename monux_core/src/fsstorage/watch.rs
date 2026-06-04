@@ -1,16 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
-
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode,
-Watcher};
-
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 
 pub struct VaultWatcher {
     _watcher: RecommendedWatcher,
     rx: Receiver<PathBuf>,
 }
-
 
 impl VaultWatcher {
     pub fn start(notes_root: &Path) -> anyhow::Result<Self> {
@@ -26,14 +22,12 @@ impl VaultWatcher {
             Config::default(),
         )?;
 
-
         watcher.watch(notes_root, RecursiveMode::Recursive)?;
         Ok(Self {
             _watcher: watcher,
             rx,
         })
     }
-
 
     pub fn drain(&self) -> Vec<PathBuf> {
         let mut out = Vec::new();
@@ -43,5 +37,3 @@ impl VaultWatcher {
         out
     }
 }
-
-

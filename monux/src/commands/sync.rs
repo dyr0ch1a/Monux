@@ -1,8 +1,6 @@
 use monux_core::index::path_in_dir;
 
-
 use crate::commands::context::CommandContext;
-
 
 pub fn run(dir: Option<String>) -> anyhow::Result<()> {
     let ctx = CommandContext::new()?;
@@ -14,9 +12,7 @@ pub fn run(dir: Option<String>) -> anyhow::Result<()> {
     }
     let scanned = notes.len();
 
-
     let removed = index.prune_orphan_tags()?;
-
 
     if let Some(dir_filter) = dir.as_deref() {
         let count = index
@@ -24,16 +20,17 @@ pub fn run(dir: Option<String>) -> anyhow::Result<()> {
             .into_iter()
             .filter(|note| path_in_dir(&note.path, dir_filter))
             .count();
-        println!("Sync
-done\tnotes={count}\tscanned={scanned}\torphan_tags_removed={removed}");
+        println!(
+            "Sync
+done\tnotes={count}\tscanned={scanned}\torphan_tags_removed={removed}"
+        );
     } else {
         let count = index.list()?.len();
-        println!("Sync
-done\tnotes={count}\tscanned={scanned}\torphan_tags_removed={removed}");
+        println!(
+            "Sync
+done\tnotes={count}\tscanned={scanned}\torphan_tags_removed={removed}"
+        );
     }
-
 
     Ok(())
 }
-
-

@@ -3,14 +3,11 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState,
-Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
-
 
 use crate::app::{App, FocusPane};
 use crate::markdown::render_markdown_segment;
-
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -18,8 +15,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Block::default().style(Style::default().bg(Color::Black)),
         area,
     );
-    let (panes_area, footer_area, command_area) = if app.command_mode
-|| app.search_mode {
+    let (panes_area, footer_area, command_area) = if app.command_mode || app.search_mode {
         let vertical = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -37,23 +33,20 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         (vertical[0], vertical[1], None)
     };
 
-
     let (notes_area, preview_area, links_area) =
         match (app.show_notes_panel(), app.show_links_panel()) {
             (false, false) => (None, panes_area, None),
             (true, false) => {
                 let chunks = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(20),
-Constraint::Percentage(80)])
+                    .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
                     .split(panes_area);
                 (Some(chunks[0]), chunks[1], None)
             }
             (false, true) => {
                 let chunks = Layout::default()
                     .direction(Direction::Horizontal)
-                    .constraints([Constraint::Percentage(80),
-Constraint::Percentage(20)])
+                    .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
                     .split(panes_area);
                 (None, chunks[0], Some(chunks[1]))
             }
@@ -69,7 +62,6 @@ Constraint::Percentage(20)])
                 (Some(chunks[0]), chunks[1], Some(chunks[2]))
             }
         };
-
 
     if let Some(area) = notes_area {
         draw_notes(frame, app, area);
@@ -106,7 +98,6 @@ Constraint::Percentage(20)])
         draw_help_popup(frame, app, popup_area);
     }
 
-
     if app.new_note_popup {
         place_new_note_cursor(frame, app, popup_area);
     } else if app.global_search_popup {
@@ -128,7 +119,6 @@ Constraint::Percentage(20)])
     }
 }
 
-
 fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
     let focus = match app.focus {
         FocusPane::Notes => "NOTES",
@@ -145,35 +135,28 @@ fn draw_footer(frame: &mut Frame, app: &App, area: Rect) {
         && !status.starts_with("y pending")
         && status != "new note";
 
-
     let text = if is_action_result {
         format!("{base} {status}")
     } else {
         base
     };
-    let paragraph =
-Paragraph::new(text).style(Style::default().add_modifier(Modifier::REVERSED)
-);
+    let paragraph = Paragraph::new(text).style(Style::default().add_modifier(Modifier::REVERSED));
     frame.render_widget(paragraph, area);
 }
 
-
 fn draw_new_note_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 74, 11, -2);
-    let dir_label = if app.new_note_field ==
-crate::app::NewNoteField::Dir {
+    let dir_label = if app.new_note_field == crate::app::NewNoteField::Dir {
         "Folder: <-"
     } else {
         "Folder:"
     };
-    let name_label = if app.new_note_field ==
-crate::app::NewNoteField::Name {
+    let name_label = if app.new_note_field == crate::app::NewNoteField::Name {
         "Name: <-"
     } else {
         "Name:"
     };
-    let tags_label = if app.new_note_field ==
-crate::app::NewNoteField::Tags {
+    let tags_label = if app.new_note_field == crate::app::NewNoteField::Tags {
         "Tags (comma/space separated): <-"
     } else {
         "Tags (comma/space separated):"
@@ -192,27 +175,24 @@ crate::app::NewNoteField::Tags {
         ),
     ]);
     let paragraph = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL).title("New
-Note"))
+        .block(Block::default().borders(Borders::ALL).title(
+            "New
+Note",
+        ))
         .wrap(Wrap { trim: false });
     render_popup_background(frame, popup);
     frame.render_widget(paragraph, popup);
 }
 
-
-fn draw_global_search_popup(frame: &mut Frame, app: &App, area: Rect)
-{
+fn draw_global_search_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 72, 14, -1);
     let mut lines = vec![
         Line::from(format!("Query: {}", app.global_search_input)),
         Line::from(""),
     ];
-    for (idx, item) in
-app.global_search_results.iter().take(8).enumerate() {
-        let (kind, value, kind_color): (&str, String, Color) = match
-item {
-            crate::app::GlobalSearchResult::Dir(path) => ("DIR ",
-path.clone(), Color::Blue),
+    for (idx, item) in app.global_search_results.iter().take(8).enumerate() {
+        let (kind, value, kind_color): (&str, String, Color) = match item {
+            crate::app::GlobalSearchResult::Dir(path) => ("DIR ", path.clone(), Color::Blue),
             crate::app::GlobalSearchResult::Note {
                 path,
                 matched_by_tag,
@@ -231,13 +211,11 @@ path.clone(), Color::Blue),
             " "
         };
         lines.push(Line::from(vec![
-            Span::styled(prefix.to_string(),
-Style::default().fg(Color::Magenta)),
+            Span::styled(prefix.to_string(), Style::default().fg(Color::Magenta)),
             Span::raw(" ["),
             Span::styled(
                 kind.to_string(),
-
-Style::default().fg(kind_color).add_modifier(Modifier::BOLD),
+                Style::default().fg(kind_color).add_modifier(Modifier::BOLD),
             ),
             Span::raw("] "),
             Span::raw(value),
@@ -255,7 +233,6 @@ Style::default().fg(kind_color).add_modifier(Modifier::BOLD),
         Style::default().add_modifier(Modifier::DIM),
     ));
 
-
     let paragraph = Paragraph::new(Text::from(lines))
         .block(
             Block::default()
@@ -266,7 +243,6 @@ Style::default().fg(kind_color).add_modifier(Modifier::BOLD),
     render_popup_background(frame, popup);
     frame.render_widget(paragraph, popup);
 }
-
 
 fn draw_new_dir_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 62, 6, -1);
@@ -290,7 +266,6 @@ fn draw_new_dir_popup(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(paragraph, popup);
 }
 
-
 fn draw_rename_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 62, 7, -1);
     let text = Text::from(vec![
@@ -310,7 +285,6 @@ fn draw_rename_popup(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(paragraph, popup);
 }
 
-
 fn draw_help_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 88, 24, -1);
     let lines = vec![
@@ -324,8 +298,7 @@ close",
             Style::default().add_modifier(Modifier::DIM),
         ),
         Line::from(""),
-        Line::styled("Global",
-Style::default().add_modifier(Modifier::BOLD)),
+        Line::styled("Global", Style::default().add_modifier(Modifier::BOLD)),
         Line::from("  ?: open/close this help popup"),
         Line::from("  Tab / Shift+Tab: cycle focus panes"),
         Line::from("  Ctrl+N: create note (dir + name + tags)"),
@@ -333,18 +306,18 @@ Style::default().add_modifier(Modifier::BOLD)),
         Line::from("  Ctrl+D: create directory popup"),
         Line::from("  Ctrl+R: rename selected item/current note"),
         Line::from("  Ctrl+S: save current note"),
-        Line::from("  q: quit (when no unsaved changes)"),
         Line::from(""),
-        Line::styled("Notes Pane",
-Style::default().add_modifier(Modifier::BOLD)),
+        Line::styled("Notes Pane", Style::default().add_modifier(Modifier::BOLD)),
         Line::from("  j/k or arrows: move selection"),
         Line::from("  Enter: open note or enter directory"),
         Line::from("  h/l or arrows: collapse/expand directory"),
         Line::from("  /: search in notes tree"),
         Line::from("  v: visual selection mode"),
         Line::from("  x: cut selected note(s), p: paste/move"),
-        Line::from("  D: delete note or selected directory (with
-confirm)"),
+        Line::from(
+            "  D: delete note or selected directory (with
+confirm)",
+        ),
         Line::from(""),
         Line::styled(
             "Preview Pane",
@@ -353,8 +326,10 @@ confirm)"),
         Line::from("  h/j/k/l or arrows: cursor/motion"),
         Line::from("  3j, 5k, 2h...: numeric count before motion"),
         Line::from("  w/b/e: word motions (start/back/end)"),
-        Line::from("  dd: delete line, dw/de/db: delete by word
-motion"),
+        Line::from(
+            "  dd: delete line, dw/de/db: delete by word
+motion",
+        ),
         Line::from("  i/a/o: enter insert mode"),
         Line::from("  v: visual mode (text selection)"),
         Line::from("  z: fold/unfold current markdown heading"),
@@ -366,8 +341,10 @@ motion"),
         Line::from("  :w                      save current note"),
         Line::from("  :q / :q!                quit / force quit"),
         Line::from("  :mkdir <path>           create directory"),
-        Line::from("  :sync [dir]             sync files <-> note
-index"),
+        Line::from(
+            "  :sync [dir]             sync files <-> note
+index",
+        ),
         Line::from("  :del <query>            delete note by query"),
     ];
     let viewport_lines = popup.height.saturating_sub(2) as usize;
@@ -387,9 +364,7 @@ index"),
     frame.render_widget(paragraph, popup);
 }
 
-
-fn draw_delete_dir_confirm_popup(frame: &mut Frame, app: &App, area:
-Rect) {
+fn draw_delete_dir_confirm_popup(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 60, 6, -1);
     let text = Text::from(vec![
         Line::from(format!(
@@ -413,7 +388,6 @@ Rect) {
     frame.render_widget(paragraph, popup);
 }
 
-
 fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
     let labels = app.link_labels();
     let links: Vec<ListItem> = if labels.is_empty() {
@@ -433,28 +407,22 @@ fn draw_links(frame: &mut Frame, app: &App, area: Rect) {
             .collect()
     };
 
-
     let mut state = ListState::default();
     if !app.links.is_empty() {
         state.select(Some(app.selected_link));
     }
 
-
     let list = List::new(links)
         .block(panel_block("Links", app.focus == FocusPane::Links))
-
-.highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .highlight_symbol("▶ ");
-
 
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-
 fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner_height = area.height.saturating_sub(2) as usize;
     app.ensure_cursor_visible(inner_height);
-
 
     let scroll = app.editor_scroll as usize;
     let mut rendered = Vec::new();
@@ -462,42 +430,34 @@ fn draw_preview(frame: &mut Frame, app: &mut App, area: Rect) {
     let code_block_rows = fenced_code_block_rows(source_lines);
     let source_len = source_lines.len();
 
-
     if source_len == 0 {
         rendered.push(Line::styled(
             "<empty file>",
             Style::default().add_modifier(Modifier::DIM),
         ));
     } else {
-        let cursor_row =
-app.preview_visible_row_for_source_row(app.cursor_row());
+        let cursor_row = app.preview_visible_row_for_source_row(app.cursor_row());
         let end = (scroll + inner_height).min(source_len);
-
 
         for idx in scroll..end {
             if app.preview_is_row_hidden(idx) {
                 continue;
             }
 
-
             let Some(raw_line) = source_lines.get(idx).cloned() else {
                 continue;
             };
 
-
             let rel = idx.abs_diff(cursor_row);
             let gutter = format!("{:>4} ", rel);
-
 
             let mut spans = vec![Span::styled(
                 gutter,
                 Style::default().add_modifier(Modifier::DIM),
             )];
 
-
             if app.preview_is_heading_row(idx) {
-                let marker = if app.preview_heading_is_collapsed(idx)
-{
+                let marker = if app.preview_heading_is_collapsed(idx) {
                     "▸ "
                 } else {
                     "▾ "
@@ -508,66 +468,50 @@ app.preview_visible_row_for_source_row(app.cursor_row());
                 ));
             }
 
-
-            let in_code_block =
-code_block_rows.get(idx).copied().unwrap_or(false);
+            let in_code_block = code_block_rows.get(idx).copied().unwrap_or(false);
             if in_code_block {
-                let code_style =
-Style::default().bg(Color::DarkGray).fg(Color::White);
+                let code_style = Style::default().bg(Color::DarkGray).fg(Color::White);
                 if let Some((sel_start, sel_end)) =
-                    app.visual_selection_for_row(idx,
-raw_line.chars().count())
+                    app.visual_selection_for_row(idx, raw_line.chars().count())
                 {
                     let before = slice_chars(&raw_line, 0, sel_start);
-                    let selected = slice_chars(&raw_line, sel_start,
-sel_end);
-                    let after = slice_chars(&raw_line, sel_end,
-raw_line.chars().count());
+                    let selected = slice_chars(&raw_line, sel_start, sel_end);
+                    let after = slice_chars(&raw_line, sel_end, raw_line.chars().count());
                     if !before.is_empty() {
                         spans.push(Span::styled(before, code_style));
                     }
                     if !selected.is_empty() {
                         spans.push(Span::styled(
                             selected,
-
-code_style.patch(Style::default().bg(Color::White).fg(Color::Black)),
+                            code_style.patch(Style::default().bg(Color::White).fg(Color::Black)),
                         ));
                     }
                     if !after.is_empty() {
                         spans.push(Span::styled(after, code_style));
                     }
                 } else {
-                    spans.push(Span::styled(raw_line.clone(),
-code_style));
+                    spans.push(Span::styled(raw_line.clone(), code_style));
                 }
             } else {
                 if let Some((sel_start, sel_end)) =
-                    app.visual_selection_for_row(idx,
-raw_line.chars().count())
+                    app.visual_selection_for_row(idx, raw_line.chars().count())
                 {
                     let before = slice_chars(&raw_line, 0, sel_start);
-                    let selected = slice_chars(&raw_line, sel_start,
-sel_end);
-                    let after = slice_chars(&raw_line, sel_end,
-raw_line.chars().count());
-
+                    let selected = slice_chars(&raw_line, sel_start, sel_end);
+                    let after = slice_chars(&raw_line, sel_end, raw_line.chars().count());
 
                     if !before.is_empty() {
-                        spans.extend(render_markdown_segment(&before,
-Style::default()));
+                        spans.extend(render_markdown_segment(&before, Style::default()));
                     }
                     if !selected.is_empty() {
-                        let selected_spans =
-render_markdown_segment(&selected, Style::default());
+                        let selected_spans = render_markdown_segment(&selected, Style::default());
                         spans.extend(apply_overlay_style(
                             selected_spans,
-
-Style::default().bg(Color::White).fg(Color::Black),
+                            Style::default().bg(Color::White).fg(Color::Black),
                         ));
                     }
                     if !after.is_empty() {
-                        spans.extend(render_markdown_segment(&after,
-Style::default()));
+                        spans.extend(render_markdown_segment(&after, Style::default()));
                     }
                 } else {
                     spans.extend(render_markdown_segment_with_cursor(
@@ -577,11 +521,9 @@ Style::default()));
                 }
             }
 
-
             rendered.push(Line::from(spans));
         }
     }
-
 
     let preview_title = if app.is_visual_mode() {
         " VISUAL MODE "
@@ -589,16 +531,12 @@ Style::default()));
         ""
     };
 
-
     let paragraph = Paragraph::new(Text::from(rendered))
-        .block(panel_block(preview_title, app.focus ==
-FocusPane::Preview))
+        .block(panel_block(preview_title, app.focus == FocusPane::Preview))
         .wrap(Wrap { trim: false });
-
 
     frame.render_widget(paragraph, area);
 }
-
 
 fn draw_notes(frame: &mut Frame, app: &App, area: Rect) {
     let labels = app.notes_tree_labels();
@@ -629,38 +567,29 @@ fn draw_notes(frame: &mut Frame, app: &App, area: Rect) {
             .collect()
     };
 
-
     let mut state = ListState::default();
     if app.notes_tree_len() > 0 {
         state.select(Some(app.selected_note));
     }
 
-
     let title = app.notes_tree_title();
     let list = List::new(items)
         .block(panel_block(&title, app.focus == FocusPane::Notes))
-
-.highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .highlight_symbol("▶ ");
-
 
     frame.render_stateful_widget(list, area, &mut state);
 }
 
-
 fn draw_command(frame: &mut Frame, app: &App, area: Rect) {
     let content = format!(":{}", app.command_input);
 
-
     let paragraph = Paragraph::new(content)
-
-.block(Block::default().borders(Borders::ALL).title("Command"))
+        .block(Block::default().borders(Borders::ALL).title("Command"))
         .wrap(Wrap { trim: true });
-
 
     frame.render_widget(paragraph, area);
 }
-
 
 fn draw_search(frame: &mut Frame, app: &App, area: Rect) {
     let content = format!("/{}", app.search_input);
@@ -674,7 +603,6 @@ fn draw_search(frame: &mut Frame, app: &App, area: Rect) {
     frame.render_widget(paragraph, area);
 }
 
-
 fn place_command_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let input_width = app.command_input.chars().count() as u16;
     let max_x = area.x + area.width.saturating_sub(2);
@@ -682,7 +610,6 @@ fn place_command_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let y = area.y + 1;
     frame.set_cursor_position((x, y));
 }
-
 
 fn place_search_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let input_width = app.search_input.chars().count() as u16;
@@ -692,7 +619,6 @@ fn place_search_cursor(frame: &mut Frame, app: &App, area: Rect) {
     frame.set_cursor_position((x, y));
 }
 
-
 fn place_editor_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let inner_width = area.width.saturating_sub(2);
     let inner_height = area.height.saturating_sub(2);
@@ -700,21 +626,16 @@ fn place_editor_cursor(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-
     let scroll = app.editor_scroll as usize;
-    let row =
-app.preview_visible_row_for_source_row(app.cursor_row());
+    let row = app.preview_visible_row_for_source_row(app.cursor_row());
     if row < scroll {
         return;
     }
 
-
-    let visual_row = app.preview_screen_row_for_source_row(scroll,
-row) as u16;
+    let visual_row = app.preview_screen_row_for_source_row(scroll, row) as u16;
     if visual_row >= inner_height {
         return;
     }
-
 
     let gutter_width: u16 = 5;
     let col = app.cursor_col() as u16
@@ -723,29 +644,23 @@ row) as u16;
         } else {
             0
         };
-    let max_col =
-inner_width.saturating_sub(1).saturating_sub(gutter_width);
+    let max_col = inner_width.saturating_sub(1).saturating_sub(gutter_width);
     let visual_col = col.min(max_col);
-
 
     let x = area.x + 1 + gutter_width + visual_col;
     let y = area.y + 1 + visual_row;
     frame.set_cursor_position((x, y));
 }
 
-
 fn place_new_note_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 74, 11, -2);
     let (input_width, y) = match app.new_note_field {
         crate::app::NewNoteField::Dir => {
-            (app.new_note_dir_input.chars().count() as u16, popup.y +
-2)
+            (app.new_note_dir_input.chars().count() as u16, popup.y + 2)
         }
-        crate::app::NewNoteField::Name =>
-(app.new_note_input.chars().count() as u16, popup.y + 5),
+        crate::app::NewNoteField::Name => (app.new_note_input.chars().count() as u16, popup.y + 5),
         crate::app::NewNoteField::Tags => {
-            (app.new_note_tags_input.chars().count() as u16, popup.y +
-7)
+            (app.new_note_tags_input.chars().count() as u16, popup.y + 7)
         }
     };
     let max_x = popup.x + popup.width.saturating_sub(2);
@@ -753,9 +668,7 @@ fn place_new_note_cursor(frame: &mut Frame, app: &App, area: Rect) {
     frame.set_cursor_position((x, y));
 }
 
-
-fn place_global_search_cursor(frame: &mut Frame, app: &App, area:
-Rect) {
+fn place_global_search_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 72, 14, -1);
     let input_width = app.global_search_input.chars().count() as u16;
     let max_x = popup.x + popup.width.saturating_sub(2);
@@ -763,7 +676,6 @@ Rect) {
     let y = popup.y + 1;
     frame.set_cursor_position((x, y));
 }
-
 
 fn place_new_dir_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 62, 6, -1);
@@ -774,7 +686,6 @@ fn place_new_dir_cursor(frame: &mut Frame, app: &App, area: Rect) {
     frame.set_cursor_position((x, y));
 }
 
-
 fn place_rename_cursor(frame: &mut Frame, app: &App, area: Rect) {
     let popup = centered_rect_with_offset(area, 62, 7, -1);
     let input_width = app.rename_input.chars().count() as u16;
@@ -784,7 +695,6 @@ fn place_rename_cursor(frame: &mut Frame, app: &App, area: Rect) {
     frame.set_cursor_position((x, y));
 }
 
-
 fn panel_block<'a>(title: &'a str, focused: bool) -> Block<'a> {
     let style = if focused {
         Style::default().add_modifier(Modifier::BOLD)
@@ -792,13 +702,11 @@ fn panel_block<'a>(title: &'a str, focused: bool) -> Block<'a> {
         Style::default()
     };
 
-
     Block::default()
         .borders(Borders::ALL)
         .title(title)
         .style(style)
 }
-
 
 fn slice_chars(text: &str, start: usize, end: usize) -> String {
     text.chars()
@@ -807,11 +715,8 @@ fn slice_chars(text: &str, start: usize, end: usize) -> String {
         .collect()
 }
 
-
-fn centered_rect(area: Rect, width_percent: u16, height: u16) -> Rect
-{
-    let width = ((area.width as u32 * width_percent as u32) / 100) as
-u16;
+fn centered_rect(area: Rect, width_percent: u16, height: u16) -> Rect {
+    let width = ((area.width as u32 * width_percent as u32) / 100) as u16;
     let popup_width = width.max(20).min(area.width);
     let popup_height = height.min(area.height);
     let x = area.x + area.width.saturating_sub(popup_width) / 2;
@@ -819,9 +724,7 @@ u16;
     Rect::new(x, y, popup_width, popup_height)
 }
 
-
-fn centered_rect_with_offset(area: Rect, width_percent: u16, height:
-u16, y_offset: i16) -> Rect {
+fn centered_rect_with_offset(area: Rect, width_percent: u16, height: u16, y_offset: i16) -> Rect {
     let mut popup = centered_rect(area, width_percent, height);
     if y_offset < 0 {
         let shift = (-y_offset) as u16;
@@ -834,7 +737,6 @@ u16, y_offset: i16) -> Rect {
     popup
 }
 
-
 fn render_popup_background(frame: &mut Frame, area: Rect) {
     frame.render_widget(Clear, area);
     frame.render_widget(
@@ -843,22 +745,16 @@ fn render_popup_background(frame: &mut Frame, area: Rect) {
     );
 }
 
-
-fn render_markdown_segment_with_cursor(segment: &str, base_style:
-Style) -> Vec<Span<'static>> {
+fn render_markdown_segment_with_cursor(segment: &str, base_style: Style) -> Vec<Span<'static>> {
     render_markdown_segment(segment, base_style)
 }
 
-
-fn apply_overlay_style(spans: Vec<Span<'static>>, overlay: Style) ->
-Vec<Span<'static>> {
+fn apply_overlay_style(spans: Vec<Span<'static>>, overlay: Style) -> Vec<Span<'static>> {
     spans
         .into_iter()
-        .map(|span| Span::styled(span.content,
-span.style.patch(overlay)))
+        .map(|span| Span::styled(span.content, span.style.patch(overlay)))
         .collect()
 }
-
 
 fn fenced_code_block_rows(lines: &[String]) -> Vec<bool> {
     let mut rows = vec![false; lines.len()];
@@ -877,10 +773,7 @@ fn fenced_code_block_rows(lines: &[String]) -> Vec<bool> {
     rows
 }
 
-
 fn is_fence_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     trimmed.starts_with("```")
 }
-
-

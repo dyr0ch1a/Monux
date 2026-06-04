@@ -118,14 +118,6 @@ self.notes_tree_visual_mode {
                     return Ok(());
                 }
             }
-            KeyCode::Char('q') => {
-                if self.dirty {
-                    self.status = "unsaved changes; use :q! to discard
-or :w".to_string();
-                } else {
-                    self.should_quit = true;
-                }
-            }
             KeyCode::Tab => {
                 self.cycle_focus(true);
             }

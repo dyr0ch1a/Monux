@@ -1,8 +1,6 @@
 use monux_core::index::normalize_dir_path;
 
-
 use crate::commands::context::CommandContext;
-
 
 pub fn run(old: String, new: String) -> anyhow::Result<()> {
     let old_dir = normalize_dir_path(&old);
@@ -18,13 +16,10 @@ pub fn run(old: String, new: String) -> anyhow::Result<()> {
         anyhow::bail!("cannot rename directory into its own child");
     }
 
-
     let ctx = CommandContext::new()?;
     let index = ctx.open_note_index()?;
     index.rename_dir(&old_dir, &new_dir)?;
 
-
     println!("Renamed dir\t{old_dir}\t{new_dir}");
     Ok(())
 }
-

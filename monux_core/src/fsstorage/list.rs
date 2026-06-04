@@ -2,17 +2,14 @@ use std::path::PathBuf;
 use std::string::String;
 use walkdir::WalkDir;
 
-
 pub struct Notes {
     root: PathBuf,
 }
-
 
 impl Notes {
     pub fn new(root: PathBuf) -> Self {
         Self { root }
     }
-
 
     pub fn list(&self) -> anyhow::Result<Vec<PathBuf>> {
         let mut notes = Vec::new();
@@ -20,20 +17,15 @@ impl Notes {
             let entry = entry?;
             let path = entry.path();
 
-
-            if path.is_file() && path.extension().and_then(|e|
-e.to_str()) == Some("md") {
+            if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
                 notes.push(path.to_path_buf());
             }
         }
         Ok(notes)
     }
 
-
-    pub fn find(&self, query: String) -> anyhow::Result<Vec<PathBuf>>
-{
+    pub fn find(&self, query: String) -> anyhow::Result<Vec<PathBuf>> {
         let notes = self.list()?;
-
 
         let result = notes
             .into_iter()
@@ -45,18 +37,15 @@ e.to_str()) == Some("md") {
             })
             .collect();
 
-
         Ok(result)
     }
     pub fn delete(&self, query: String) -> anyhow::Result<()> {
         let files = self.find(query)?;
 
-
         if files.is_empty() {
             println!("Nothing found");
             return Ok(());
         }
-
 
         for file in files {
             println!("Deleting: {}", file.display());
@@ -65,5 +54,3 @@ e.to_str()) == Some("md") {
         Ok(())
     }
 }
-
-
