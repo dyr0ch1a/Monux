@@ -3,9 +3,12 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(name = "monux")]
 #[command(
-    about = "CLI for managing markdown notes in Monux storage",
-    long_about = "Monux CLI: initialize storage, create/find/list/sync
-notes, and open the line editor."
+    about = "CLI для управления markdown-заметками в хранилище Monux",
+    long_about = concat!(
+        "Monux CLI: инициализация хранилища, создание, поиск, ",
+        "список и синхронизация заметок, а также запуск ",
+        "встроенного построчного редактора."
+    )
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -14,83 +17,85 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Initialize Monux config and notes directory
+    /// Инициализировать конфиг Monux и каталог заметок
     Init,
-    /// Print Monux version
+    /// Показать версию Monux
     Version,
-    /// Create a new note by name (or path) with optional tags and directory)
+    /// Показать справку по CLI Monux
+    Help,
+    /// Создать новую заметку по имени или пути, с необязательными тегами и папкой
     New {
-        /// Note name or path
+        /// Имя заметки или путь
         name: Option<String>,
-        /// Tags separated by spaces and/or commas
+        /// Теги через пробелы и/или запятые
         #[arg(short, long)]
         tags: Option<String>,
-        /// Target directory relative to notes root (example:project/rust)
+        /// Целевая папка относительно корня заметок (пример: project/rust)
         #[arg(long)]
         dir: Option<String>,
     },
-    /// List notes, optionally filtered by directory prefix
+    /// Показать список заметок, при необходимости с фильтром по префиксу папки
     List {
-        /// Directory prefix relative to notes root
+        /// Префикс папки относительно корня заметок
         #[arg(long)]
         dir: Option<String>,
-        /// List directories instead of notes
+        /// Показывать папки вместо заметок
         #[arg(long = "dirs")]
         dirs: bool,
-        /// Include tags in list output
+        /// Показывать теги в выводе списка
         #[arg(long = "tags")]
         tags: bool,
-        /// Show full note path
+        /// Показывать полный путь заметки
         #[arg(long = "path")]
         path: bool,
     },
-    /// Find notes by title/path, optionally by tag/content/directory
+    /// Найти заметки по названию или пути, при необходимости по тегу, содержимому или папке
     Find {
-        /// Search query for path/title (and content with --content)
+        /// Поисковый запрос по пути или названию, а с `--content` и по содержимому
         query: String,
-        /// Filter by tag(s), separated by spaces and/or commas
+        /// Фильтр по тегам через пробелы и/или запятые
         #[arg(short = 't', long = "tags")]
         tags: Option<String>,
-        /// Include full-text search in markdown body
+        /// Искать также по тексту внутри markdown-файла
         #[arg(short = 'c', long = "content")]
         content: bool,
-        /// Restrict search to directory prefix
+        /// Ограничить поиск префиксом папки
         #[arg(long)]
         dir: Option<String>,
-        /// Show full note path
+        /// Показывать полный путь заметки
         #[arg(long = "path")]
         path: bool,
     },
-    /// Delete notes by query (asks confirmation unless --yes)
+    /// Удалить заметки по запросу, с подтверждением если не указан `--yes`
     Delete {
-        /// Query used to find note(s) for deletion
+        /// Запрос для поиска заметки или заметок на удаление
         query: String,
-        /// Skip confirmation prompt
+        /// Не спрашивать подтверждение
         #[arg(short = 'y', long = "yes")]
         yes: bool,
     },
-    /// Rename note path/title
+    /// Переименовать заметку по пути или названию
     Rename {
-        /// Existing note path
+        /// Существующий путь заметки
         old: String,
-        /// New note path or title
+        /// Новый путь или название заметки
         new: String,
     },
-    /// Rename directory path (and all nested note paths)
+    /// Переименовать папку вместе со всеми вложенными заметками
     RenameDir {
-        /// Existing directory path
+        /// Существующий путь папки
         old: String,
-        /// New directory path
+        /// Новый путь папки
         new: String,
     },
-    /// Sync note index with files in notes directory
+    /// Синхронизировать индекс заметок с файлами в каталоге заметок
     Sync {
-        /// Restrict sync to directory prefix
+        /// Ограничить синхронизацию префиксом папки
         #[arg(long)]
         dir: Option<String>,
     },
-    /// Open built-in line editor (optionally with a note path)
+    /// Открыть встроенный построчный редактор, при необходимости с путём заметки
     Edit { path: Option<String> },
-    /// Launch terminal UI (monux_tui binary)
+    /// Запустить терминальный интерфейс Monux TUI
     Tui,
 }

@@ -792,6 +792,11 @@ or :w".to_string();
             "q!" => {
                 self.should_quit = true;
             }
+            "help" => {
+                self.help_popup = true;
+                self.help_popup_scroll = 0;
+                self.status = "help".to_string();
+            }
             "wq" => {
                 let rest = parts.collect::<Vec<_>>().join(" ");
                 if rest.trim().is_empty() {
