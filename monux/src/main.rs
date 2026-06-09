@@ -64,12 +64,10 @@ fn localize_command(mut command: Command) -> Command {
 }
 
 fn help_template_for(command: &Command) -> String {
-    let has_positionals = command
-        .get_positionals()
-        .any(|arg| !arg.is_hide_set());
+    let has_positionals = command.get_positionals().any(|arg| !arg.is_hide_set());
     let has_options = command
         .get_arguments()
-        .any(|arg| !arg.is_positional() && !arg.is_hide_set());
+        .any(|arg| !arg.is_positional() && !arg.is_hide_set() && arg.get_id() != "help");
     let has_subcommands = command
         .get_subcommands()
         .any(|subcommand| !subcommand.is_hide_set());
@@ -85,6 +83,10 @@ fn help_template_for(command: &Command) -> String {
     if has_options {
         sections.push(String::from("Опции:\n{options}"));
     }
+
+    sections.push(String::from(
+        "Справка:\n  -h, --help   Аргументы для полученяи справки",
+    ));
 
     let mut template = String::from("{before-help}{about-with-newline}\nИспользование: {usage}");
     if !sections.is_empty() {
